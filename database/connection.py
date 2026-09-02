@@ -27,15 +27,13 @@ async def init_tables():
         id serial primary key,
         telegram_id bigint unique not null,
         name varchar(100) not null,
-        role varchar(20) not null
-            check (role in ('student', 'teacher', 'admin')),
+        role varchar(20) not null check (role in ('student', 'teacher', 'admin')),
         created_at timestamp default current_timestamp
     );
 
     create table if not exists students (
         id serial primary key,
-        user_id integer unique not null
-            references users(id) on delete cascade,
+        user_id integer unique not null references users(id) on delete cascade,
         group_name varchar(100),
         average_grade decimal(5,2) default 0
     );
@@ -48,32 +46,43 @@ async def init_tables():
 
     create table if not exists lessons (
         id serial primary key,
-        teacher_id integer not null
-            references teachers(id) on delete cascade,
+        teacher_id integer not null references teachers(id) on delete cascade,
         subject varchar(100) not null,
         lesson_date date not null
     );
 
     create table if not exists attendance (
         id serial primary key,
-        lesson_id integer not null
-            references lessons(id) on delete cascade,
-        student_id integer not null
-            references students(id) on delete cascade,
-        status varchar(20) not null
-            check (status in ('present', 'absent', 'late')),
+        lesson_id integer not null references lessons(id) on delete cascade,
+        student_id integer not null references students(id) on delete cascade,
+        status varchar(20) not null check (status in ('present', 'absent', 'late')),
         unique (lesson_id, student_id)
     );
 
     create table if not exists grades (
         id serial primary key,
-        student_id integer not null
-            references students(id) on delete cascade,
+        student_id integer not null references students(id) on delete cascade,
         subject varchar(100) not null,
-        grade decimal(5,2) not null
-            check (grade >= 0 and grade <= 100),
+        grade decimal(5,2) not null check (grade >= 0 and grade <= 100),
         created_at timestamp default current_timestamp
     );
+
+    create table if not exists notifications (
+            id serial primary key,
+            user_id integer not null references users(id) on delete cascade,
+            message text not null,
+            notification_type varchar(30) not null check (notification_type in ('reminder','absence_warning','attendance_warning','weekly_report','general' )),
+            is_read boolean default false,
+            created_at timestamp default current_timestamp
+        );
+
+    create table if not exists teacher_requests (
+            id serial primary key,
+            user_id integer not null references users(id) on delete cascade,
+            status varchar(20) not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+            created_at timestamp default current_timestamp
+        );
+
     """)
 
     except Exception as er:
