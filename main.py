@@ -1,7 +1,7 @@
 import asyncio
 from aiogram import Bot, Dispatcher
 from database.connection import init_tables
-import handlers.start,handlers.students,handlers.attendance,handlers.teacher
+import handlers.start,handlers.students,handlers.attendance,handlers.teacher,handlers.attendance
 from config import BOT_TOKEN
 
 

@@ -184,10 +184,11 @@ async def calculate_early_leave_minutes(lesson_id,student_id):
         early_leave_minutes=(end_time.hour*60+end_time.minute)-(check_out.hour*60+check_out.minute)
         if early_leave_minutes<0:
             early_leave_minutes=0
+        status="left_early" if early_leave_minutes>0 else "present"
         await conn.execute("""
-        update attendance_records set early_leave_minutes=$1
-        where lesson_id=$2 and student_id=$3
-        """,early_leave_minutes,lesson_id,student_id)
+        update attendance_records set early_leave_minutes=$1,status=$2
+        where lesson_id=$3 and student_id=$4
+        """,early_leave_minutes,status,lesson_id,student_id)
         return early_leave_minutes
     except Exception as er:
         print("calculate early leave minutes error:",er)
@@ -264,5 +265,22 @@ async def get_attendance_edits(attendance_id):
         return edits
     except Exception as er:
         print("get attendance edits error:",er)
+    finally:
+        await conn.close()
+
+
+async def get_attendance_by_id(attendance_id):
+    conn=await get_connection()
+    try:
+        attendance=await conn.fetchrow("""
+        select ar.id,ar.lesson_id,ar.student_id,u.full_name,ar.status
+        from attendance_records ar
+        join students s on ar.student_id=s.id
+        join users u on s.user_id=u.id
+        where ar.id=$1
+        """,attendance_id)
+        return attendance
+    except Exception as er:
+        print("get attendance by id error:",er)
     finally:
         await conn.close()
