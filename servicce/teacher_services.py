@@ -42,7 +42,9 @@ async def get_all_teachers():
     conn=await get_connection()
     try:
         teachers=await conn.fetch("""
-        select * from teachers
+        select t.id,t.user_id,u.full_name from teachers t
+        join users u on t.user_id=u.id
+        order by u.full_name
         """)
         return teachers
     except Exception as er:
