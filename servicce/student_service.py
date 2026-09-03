@@ -90,3 +90,22 @@ async def get_student_group(student_id):
         print("get student group error:",er)
     finally:
         await conn.close()
+
+
+
+
+async def get_group_student_users(group_id):
+    conn=await get_connection()
+    try:
+        students=await conn.fetch("""
+        select u.id,u.telegram_id,u.full_name
+        from group_students gs
+        join students s on gs.student_id=s.id
+        join users u on s.user_id=u.id
+        where gs.group_id=$1
+        """,group_id)
+        return students
+    except Exception as er:
+        print("get group student users error:",er)
+    finally:
+        await conn.close()

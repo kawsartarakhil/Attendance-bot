@@ -16,7 +16,7 @@ async def main():
     dp.include_router(handlers.students.router)
     dp.include_router(handlers.attendance.router)
     dp.include_router(handlers.teacher.router)
-    start_scheduler()
+    start_scheduler(bot)
     await dp.start_polling(bot)
 
 

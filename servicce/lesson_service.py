@@ -211,3 +211,41 @@ async def get_finished_lessons():
         print("get finished lessons error:",er)
     finally:
         await conn.close()
+
+
+
+async def get_upcoming_lessons_for_reminder():
+    conn=await get_connection()
+    try:
+        lessons=await conn.fetch("""
+        select l.id,l.group_id,l.subject,l.lesson_date,l.start_time,r.name as room_name
+        from lessons l
+        left join rooms r on l.room_id=r.id
+        where l.lesson_date=current_date
+        and l.status!='cancelled'
+        and l.start_time between current_time + interval '29 minutes' and current_time + interval '31 minutes'
+        """)
+        return lessons
+    except Exception as er:
+        print("get upcoming lessons reminder error:",er)
+    finally:
+        await conn.close()
+
+
+async def get_started_lessons():
+    conn=await get_connection()
+    try:
+        lessons=await conn.fetch("""
+        select l.id,l.group_id,l.subject,l.start_time,r.name as room_name
+        from lessons l
+        left join rooms r on l.room_id=r.id
+        where l.lesson_date=current_date
+        and l.status!='cancelled'
+        and l.start_time<current_time
+        and l.end_time>current_time
+        """)
+        return lessons
+    except Exception as er:
+        print("get started lessons error:",er)
+    finally:
+        await conn.close()

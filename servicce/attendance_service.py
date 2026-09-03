@@ -284,3 +284,42 @@ async def get_attendance_by_id(attendance_id):
         print("get attendance by id error:",er)
     finally:
         await conn.close()
+
+
+async def get_students_not_checked_in(lesson_id):
+    conn=await get_connection()
+    try:
+        students=await conn.fetch("""
+        select u.telegram_id,u.full_name
+        from attendance_records ar
+        join students s on ar.student_id=s.id
+        join users u on s.user_id=u.id
+        where ar.lesson_id=$1
+        and ar.check_in_time is null
+        """,lesson_id)
+        return students
+    except Exception as er:
+        print("get students not checked in error:",er)
+    finally:
+        await conn.close()
+
+
+async def get_students_with_low_attendance():
+    conn=await get_connection()
+    try:
+        students=await conn.fetch("""
+        select s.id,u.telegram_id,u.full_name,
+        count(ar.id) as total_lessons,
+        count(ar.id) filter(where ar.status in ('present','late','left_early')) as attended
+        from students s
+        join users u on s.user_id=u.id
+        join attendance_records ar on ar.student_id=s.id
+        group by s.id,u.telegram_id,u.full_name
+        having count(ar.id)>0
+        and count(ar.id) filter(where ar.status in ('present','late','left_early'))*100.0/count(ar.id)<75
+        """)
+        return students
+    except Exception as er:
+        print("get low attendance students error:",er)
+    finally:
+        await conn.close()
