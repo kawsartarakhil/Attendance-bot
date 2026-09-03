@@ -1,6 +1,6 @@
 from aiogram import Router,types,F
 from aiogram.fsm.context import FSMContext
-from servicce.analytics_service import get_monthly_report
+from servicce.analytics_service import get_monthly_report,get_weekly_report
 from servicce.user_services import get_user_tg_id
 from servicce.student_service import get_all_students,get_student_by_id,get_student_group
 from servicce.teacher_services import get_all_teachers,get_teacher_by_id,get_teacher_groups
@@ -1216,6 +1216,31 @@ async def monthly_report_handler(message:types.Message):
     percentage=round(attended*100/total,2) if total else 0
     await message.answer(
         f"📊 Monthly Attendance Report\n\n"
+        f"📚 Lessons: {report['lessons'] or 0}\n"
+        f"👥 Attendance records: {total}\n"
+        f"✅ Attended: {attended}\n"
+        f"⏰ Late: {late}\n"
+        f"❌ Absent: {absent}\n"
+        f"🟡 Excused: {excused}\n\n"
+        f"📈 Attendance: {percentage}%"
+    )
+
+
+@router.message(F.text=="Weekly Reports")
+async def weekly_report_handler(message:types.Message):
+    user=await get_user_tg_id(message.from_user.id)
+    if user is None or user["role"]!="admin":
+        await message.answer("You don't have permission to access this.")
+        return
+    report=await get_weekly_report()
+    total=report["total_records"] or 0
+    attended=report["attended"] or 0
+    late=report["late"] or 0
+    absent=report["absent"] or 0
+    excused=report["excused"] or 0
+    percentage=round(attended*100/total,2) if total else 0
+    await message.answer(
+        f"📊 Weekly Attendance Report\n\n"
         f"📚 Lessons: {report['lessons'] or 0}\n"
         f"👥 Attendance records: {total}\n"
         f"✅ Attended: {attended}\n"
