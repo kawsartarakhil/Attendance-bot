@@ -258,3 +258,26 @@ async def get_attendance_trend(student_id):
         print("get attendance trend error:",er)
     finally:
         await conn.close()
+
+
+
+async def get_monthly_report():
+    conn=await get_connection()
+    try:
+        report=await conn.fetchrow("""
+        select
+        count(distinct l.id) as lessons,
+        count(ar.id) as total_records,
+        count(ar.id) filter(where ar.status in ('present','late','left_early')) as attended,
+        count(ar.id) filter(where ar.status='late') as late,
+        count(ar.id) filter(where ar.status='absent') as absent,
+        count(ar.id) filter(where ar.status='excused') as excused
+        from lessons l
+        join attendance_records ar on ar.lesson_id=l.id
+        where date_trunc('month',l.lesson_date)=date_trunc('month',current_date)
+        """)
+        return report
+    except Exception as er:
+        print("monthly report error:",er)
+    finally:
+        await conn.close()

@@ -1,5 +1,6 @@
 from aiogram import Router,types,F
 from aiogram.fsm.context import FSMContext
+from servicce.analytics_service import get_monthly_report
 from servicce.user_services import get_user_tg_id
 from servicce.student_service import get_all_students,get_student_by_id,get_student_group
 from servicce.teacher_services import get_all_teachers,get_teacher_by_id,get_teacher_groups
@@ -1203,3 +1204,23 @@ async def create_lesson_confirm_handler(message: types.Message,state: FSMContext
     await state.clear()
 
     await message.answer("Lesson created successfully.")
+
+@router.message(F.text=="Monthly Reports")
+async def monthly_report_handler(message:types.Message):
+    report=await get_monthly_report()
+    total=report["total_records"] or 0
+    attended=report["attended"] or 0
+    late=report["late"] or 0
+    absent=report["absent"] or 0
+    excused=report["excused"] or 0
+    percentage=round(attended*100/total,2) if total else 0
+    await message.answer(
+        f"📊 Monthly Attendance Report\n\n"
+        f"📚 Lessons: {report['lessons'] or 0}\n"
+        f"👥 Attendance records: {total}\n"
+        f"✅ Attended: {attended}\n"
+        f"⏰ Late: {late}\n"
+        f"❌ Absent: {absent}\n"
+        f"🟡 Excused: {excused}\n\n"
+        f"📈 Attendance: {percentage}%"
+    )

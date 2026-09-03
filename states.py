@@ -29,6 +29,9 @@ class EditScheduleStates(StatesGroup):
     room=State()
     confirm=State()
 
+class DeleteScheduleStates(StatesGroup):
+    confirm=State()
+
 
 class ManualAttendanceStates(StatesGroup):
     student=State()
