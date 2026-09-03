@@ -137,6 +137,7 @@ async def init_tables():
     );
 
     """)
+        print("tables created")
 
     except Exception as er:
         print("Initailazation error:", er)
