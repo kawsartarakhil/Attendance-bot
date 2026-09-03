@@ -1,6 +1,9 @@
 from aiogram.fsm.state import State, StatesGroup
 
 
+class RegistrationStates(StatesGroup):
+    full_name=State()
+    
 class CreateGroupStates(StatesGroup):
     group_name=State()
     course=State()

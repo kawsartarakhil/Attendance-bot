@@ -1,18 +1,25 @@
 from database.connection import get_connection
 
-async def register(tg_id,name):
+async def register(tg_id,full_name):
     conn=await get_connection()
     try:
         user=await conn.fetchrow("""
         select * from users
-        where telegram_id =$1
+        where telegram_id=$1
         """,tg_id)
+
         if user:
             return user
-        user=await user.execute("""
-        insert into users(telegram_id,name,role)
+
+        await conn.execute("""
+        insert into users(telegram_id,full_name,role)
         values($1,$2,'student')
-        """,tg_id,name)
+        """,tg_id,full_name)
+
+        user=await conn.fetchrow("""
+        select * from users
+        where telegram_id=$1
+        """,tg_id)
 
         await conn.execute("""
         insert into students(user_id)
@@ -21,7 +28,6 @@ async def register(tg_id,name):
         return user
     except Exception as er:
         print("Registration error:",er)
-
     finally:
         await conn.close()
 
@@ -57,7 +63,7 @@ async def get_user_id(id):
 async def get_users():
     conn=await get_connection()
     try:
-        user= await conn.fetchrow("""
+        user= await conn.fetch("""
         select * from users
         order by id
         """,)
@@ -71,7 +77,7 @@ async def get_users():
 async def change_role(user_id,role):
     conn=await get_connection()
     try:
-        user= await conn.fetchrow("""
+        user= await conn.execute("""
         update users set role=$1
         where id=$2
         """,role,user_id)
