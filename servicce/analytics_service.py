@@ -306,3 +306,30 @@ async def get_weekly_report():
         print("weekly report error:",er)
     finally:
         await conn.close()
+
+
+async def get_teacher_statistics():
+    conn=await get_connection()
+    try:
+        teachers=await conn.fetch("""
+        select
+        t.id,
+        u.full_name,
+        count(distinct l.id) as lessons,
+        count(ar.id) as total_records,
+        count(ar.id) filter(where ar.status in ('present','late','left_early')) as attended,
+        count(ar.id) filter(where ar.status='late') as late,
+        count(ar.id) filter(where ar.status='absent') as absent
+        from teachers t
+        join users u on t.user_id=u.id
+        left join lessons l on l.teacher_id=t.id
+        left join attendance_records ar on ar.lesson_id=l.id
+        group by t.id,u.full_name
+        order by u.full_name
+        """)
+        return teachers
+    except Exception as er:
+        print("teacher statistics error:",er)
+        return []
+    finally:
+        await conn.close()

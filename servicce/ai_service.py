@@ -9,7 +9,8 @@ async def analyze_student_attendance(student_id):
     statistics=await get_student_statistics(student_id)
 
     prompt=f"""
-    Analyze this student's attendance statistics.
+    Analyz
+    e this student's attendance statistics.
 
     Statistics:
     {statistics}

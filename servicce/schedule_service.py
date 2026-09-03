@@ -1,8 +1,11 @@
+from datetime import time
 from database.connection import get_connection
 
 async def create_schedule(group_id,weekday,start_time,end_time,room_id=None):
     conn=await get_connection()
     try:
+        start_time=time.fromisoformat(start_time)
+        end_time=time.fromisoformat(end_time)
         await conn.execute("""
         insert into schedules(group_id,weekday,start_time,end_time,room_id)
         values($1,$2,$3,$4,$5)
@@ -67,6 +70,8 @@ async def get_all_schedules():
 async def update_schedule(schedule_id,group_id,weekday,start_time,end_time,room_id=None):
     conn=await get_connection()
     try:
+        start_time=time.fromisoformat(start_time)
+        end_time=time.fromisoformat(end_time)
         await conn.execute("""
         update schedules set group_id=$1,weekday=$2,start_time=$3,end_time=$4,room_id=$5
         where id=$6

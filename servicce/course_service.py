@@ -60,3 +60,5 @@ async def delete_course(course_id):
         print("delete course error:",er)
     finally:
         await conn.close()
+
+

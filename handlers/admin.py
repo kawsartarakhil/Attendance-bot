@@ -1,17 +1,19 @@
+from datetime import date, time
+
 from aiogram import Router,types,F
 from aiogram.fsm.context import FSMContext
-from servicce.analytics_service import get_monthly_report,get_weekly_report
+from servicce.analytics_service import get_monthly_report,get_weekly_report,get_teacher_statistics
 from servicce.user_services import get_user_tg_id
 from servicce.student_service import get_all_students,get_student_by_id,get_student_group
 from servicce.teacher_services import get_all_teachers,get_teacher_by_id,get_teacher_groups
 from servicce.course_service import get_all_courses,get_course_by_id,create_course,update_course,delete_course
 from servicce.room_service import get_all_rooms,get_room_by_id,create_room,update_room,delete_room
 from servicce.schedule_service import get_all_schedules,get_schedule_by_id,create_schedule,delete_schedule,update_schedule
-from keyboards.inline import rooms_keyboard,students_keyboard,teachers_keyboard,courses_keyboard,course_actions_keyboard,groups_keyboard,group_courses_keyboard,group_teachers_keyboard,group_actions_keyboard,edit_group_courses_keyboard,edit_group_teachers_keyboard,schedules_keyboard,schedule_actions_keyboard,lessons_keyboard,lesson_actions_keyboard
+from keyboards.inline import rooms_keyboard,room_actions_keyboard, schedule_groups_keyboard, schedule_rooms_keyboard,students_keyboard,teachers_keyboard,courses_keyboard,course_actions_keyboard,groups_keyboard,group_courses_keyboard,group_teachers_keyboard,group_actions_keyboard,edit_group_courses_keyboard,edit_group_teachers_keyboard,schedules_keyboard,schedule_actions_keyboard,lessons_keyboard,lesson_actions_keyboard
 from servicce.lesson_service import create_lesson,get_lesson_by_id,get_today_lessons,update_lesson_status,cancel_lesson
-from states import CreateCourseStates, CreateLessonStates,EditCourseStates,DeleteCourseStates,CreateGroupStates,EditGroupStates,DeleteGroupStates,CreateRoomStates,EditRoomStates,DeleteRoomStates,CreateScheduleStates,EditScheduleStates,DeleteScheduleStates
+from states import AddCourseStates, CreateCourseStates, CreateLessonStates,EditCourseStates,DeleteCourseStates,CreateGroupStates,EditGroupStates,DeleteGroupStates,CreateRoomStates,EditRoomStates,DeleteRoomStates,CreateScheduleStates,EditScheduleStates,DeleteScheduleStates
 from servicce.group_service import get_all_groups,get_group_by_id,create_group,update_group,delete_group,get_group_students
-from aiogram.types import InlineKeyboardMarkup,InlineKeyboardButton
+from aiogram.types import CallbackQuery
 router=Router()
 
 
@@ -151,7 +153,8 @@ async def admin_teacher_handler(callback: types.CallbackQuery):
 
 
 @router.message(F.text=="Courses")
-async def admin_courses_handler(message: types.Message):
+async def admin_courses_handler(message:types.Message,state:FSMContext):
+    await state.clear()
     user=await get_user_tg_id(message.from_user.id)
     if user is None:
         await message.answer("User not found.")
@@ -160,10 +163,7 @@ async def admin_courses_handler(message: types.Message):
         await message.answer("You don't have permission to access this.")
         return
     courses=await get_all_courses()
-    if not courses:
-        await message.answer("There are no courses.")
-        return
-    await message.answer("Courses:", reply_markup=courses_keyboard(courses))
+    await message.answer("Courses:",reply_markup=courses_keyboard(courses))
 
 @router.callback_query(F.data.startswith("course_"))
 async def admin_course_handler(callback: types.CallbackQuery):
@@ -181,14 +181,15 @@ async def admin_course_handler(callback: types.CallbackQuery):
     await callback.message.answer("Course Details\n\nCourse ID: "+str(course["id"])+"\nName: "+course["name"]+"\nDescription: "+str(course["description"]),reply_markup=course_actions_keyboard(course_id))
     await callback.answer()
 
-@router.message(F.text=="Create Course")
-async def create_course_handler(message: types.Message,state: FSMContext):
-    user=await get_user_tg_id(message.from_user.id)
+@router.callback_query(F.data=="create_course")
+async def create_course_handler(callback:CallbackQuery,state:FSMContext):
+    user=await get_user_tg_id(callback.from_user.id)
     if user is None or user["role"]!="admin":
-        await message.answer("You don't have permission to access this.")
+        await callback.answer("You don't have permission.",show_alert=True)
         return
     await state.set_state(CreateCourseStates.name)
-    await message.answer("Enter course name:")
+    await callback.message.answer("Enter course name:")
+    await callback.answer()
 
 @router.message(CreateCourseStates.name)
 async def course_name_handler(message: types.Message,state: FSMContext):
@@ -314,7 +315,8 @@ async def delete_course_confirm_handler(message: types.Message,state: FSMContext
     await message.answer("Course deleted successfully.")
 
 @router.message(F.text=="Groups")
-async def admin_groups_handler(message: types.Message):
+async def admin_groups_handler(message:types.Message,state:FSMContext):
+    await state.clear()
     user=await get_user_tg_id(message.from_user.id)
     if user is None:
         await message.answer("User not found.")
@@ -323,13 +325,10 @@ async def admin_groups_handler(message: types.Message):
         await message.answer("You don't have permission to access this.")
         return
     groups=await get_all_groups()
-    if not groups:
-        await message.answer("There are no groups.")
-        return
     await message.answer("Groups:",reply_markup=groups_keyboard(groups))
 
 
-@router.callback_query(F.data.startswith("group_"))
+@router.callback_query(F.data.regexp(r"^group_\d+$"))
 async def admin_group_handler(callback: types.CallbackQuery):
     if not callback.data.split("_")[1].isdigit():
         return
@@ -359,18 +358,20 @@ async def admin_group_handler(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@router.message(F.text=="Create Group")
-async def create_group_handler(message: types.Message,state: FSMContext):
-    user=await get_user_tg_id(message.from_user.id)
+@router.callback_query(F.data=="create_group")
+async def create_group_handler(callback:CallbackQuery,state:FSMContext):
+    user=await get_user_tg_id(callback.from_user.id)
     if user is None or user["role"]!="admin":
-        await message.answer("You don't have permission to access this.")
+        await callback.answer("You don't have permission.",show_alert=True)
         return
     courses=await get_all_courses()
     if not courses:
-        await message.answer("There are no courses. Create a course first.")
+        await callback.message.answer("There are no courses. Create a course first.")
+        await callback.answer()
         return
     await state.set_state(CreateGroupStates.group_name)
-    await message.answer("Enter group name:")
+    await callback.message.answer("Enter group name:")
+    await callback.answer()
 
 
 @router.message(CreateGroupStates.group_name)
@@ -547,22 +548,24 @@ async def delete_group_confirm_handler(message: types.Message,state: FSMContext)
     await message.answer("Group deleted successfully.")
 
 @router.message(F.text=="Rooms")
-async def admin_rooms_handler(message: types.Message):
+async def admin_rooms_handler(message:types.Message,state:FSMContext):
+    await state.clear()
     user=await get_user_tg_id(message.from_user.id)
-    if user is None or user["role"]!="admin":
+    if user is None:
+        await message.answer("User not found.")
+        return
+    if user["role"]!="admin":
         await message.answer("You don't have permission to access this.")
         return
     rooms=await get_all_rooms()
-    if not rooms:
-        await message.answer("There are no rooms.")
-        return
     await message.answer("Rooms:",reply_markup=rooms_keyboard(rooms))
-@router.callback_query(F.data.startswith("room_"))
-async def admin_room_handler(callback: types.CallbackQuery):
+
+
+@router.callback_query(F.data.regexp(r"^room_\d+$"))
+async def admin_room_handler(callback:types.CallbackQuery):
     user=await get_user_tg_id(callback.from_user.id)
     if user is None or user["role"]!="admin":
-        await callback.message.answer("You don't have permission to access this.")
-        await callback.answer()
+        await callback.answer("You don't have permission.",show_alert=True)
         return
     room_id=int(callback.data.split("_")[1])
     room=await get_room_by_id(room_id)
@@ -570,53 +573,59 @@ async def admin_room_handler(callback: types.CallbackQuery):
         await callback.message.answer("Room not found.")
         await callback.answer()
         return
-
     await callback.message.answer(
-        "Room Details\n\n"+"Room ID: "+str(room["id"])+"\n"+"Name: "+room["name"]+"\n"+"Capacity: "+str(room["capacity"]),
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="Edit Room",callback_data=f"edit_room_{room_id}")
-                ],
-                [
-                    InlineKeyboardButton(text="Delete Room",callback_data=f"delete_room_{room_id}"  )
-                ]
-            ]
-        )
+        "Room Details\n\n"+
+        "Room ID: "+str(room["id"])+"\n"+
+        "Name: "+room["name"]+"\n"+
+        "Capacity: "+str(room["capacity"]),
+        reply_markup=room_actions_keyboard(room_id)
     )
     await callback.answer()
 
 
-@router.message(F.text=="Create Room")
-async def create_room_handler(message: types.Message,state: FSMContext):
-    user=await get_user_tg_id(message.from_user.id)
+@router.callback_query(F.data=="create_room")
+async def create_room_handler(callback:types.CallbackQuery,state:FSMContext):
+    user=await get_user_tg_id(callback.from_user.id)
     if user is None or user["role"]!="admin":
-        await message.answer("You don't have permission to access this.")
+        await callback.answer("You don't have permission.",show_alert=True)
         return
     await state.set_state(CreateRoomStates.name)
-    await message.answer("Enter room name:")
+    await callback.message.answer("Enter room name:")
+    await callback.answer()
 
 
 @router.message(CreateRoomStates.name)
-async def room_name_handler(message: types.Message,state: FSMContext):
+async def room_name_handler(message:types.Message,state:FSMContext):
+    if not message.text:
+        await message.answer("Please enter a room name.")
+        return
     await state.update_data(name=message.text)
     await state.set_state(CreateRoomStates.capacity)
     await message.answer("Enter room capacity:")
 
 
 @router.message(CreateRoomStates.capacity)
-async def room_capacity_handler(message: types.Message,state: FSMContext):
+async def room_capacity_handler(message:types.Message,state:FSMContext):
     if not message.text.isdigit():
-        await message.answer("Please enter a valid number.")
+        await message.answer("Please enter a number.")
         return
-    await state.update_data(capacity=int(message.text))
+    capacity=int(message.text)
+    if capacity<=0:
+        await message.answer("Capacity must be greater than 0.")
+        return
+    await state.update_data(capacity=capacity)
     await state.set_state(CreateRoomStates.confirm)
     data=await state.get_data()
-    await message.answer("Create this room?\n\n"+ "Name: "+data["name"]+"\n"+"Capacity: "+str(data["capacity"])+"\n\n"+"Send Yes to confirm or No to cancel.")
+    await message.answer(
+        "Create this room?\n\n"+
+        "Name: "+data["name"]+"\n"+
+        "Capacity: "+str(data["capacity"])+"\n\n"+
+        "Send Yes to confirm or No to cancel."
+    )
 
 
 @router.message(CreateRoomStates.confirm)
-async def create_room_confirm_handler(message: types.Message,state: FSMContext):
+async def room_confirm_handler(message:types.Message,state:FSMContext):
     user=await get_user_tg_id(message.from_user.id)
     if user is None or user["role"]!="admin":
         await state.clear()
@@ -635,12 +644,11 @@ async def create_room_confirm_handler(message: types.Message,state: FSMContext):
     await message.answer("Room created successfully.")
 
 
-@router.callback_query(F.data.startswith("edit_room_"))
-async def edit_room_handler(callback: types.CallbackQuery,state: FSMContext):
+@router.callback_query(F.data.regexp(r"^edit_room_\d+$"))
+async def edit_room_handler(callback:types.CallbackQuery,state:FSMContext):
     user=await get_user_tg_id(callback.from_user.id)
     if user is None or user["role"]!="admin":
-        await callback.message.answer("You don't have permission to access this.")
-        await callback.answer()
+        await callback.answer("You don't have permission.",show_alert=True)
         return
     room_id=int(callback.data.split("_")[2])
     room=await get_room_by_id(room_id)
@@ -650,30 +658,44 @@ async def edit_room_handler(callback: types.CallbackQuery,state: FSMContext):
         return
     await state.update_data(room_id=room_id)
     await state.set_state(EditRoomStates.name)
-    await callback.message.answer("Enter new room name:")
+    await callback.message.answer(
+        "Enter new room name:\n\nCurrent name: "+room["name"]
+    )
     await callback.answer()
 
 
 @router.message(EditRoomStates.name)
-async def edit_room_name_handler(message: types.Message,state: FSMContext):
+async def edit_room_name_handler(message:types.Message,state:FSMContext):
+    if not message.text:
+        await message.answer("Please enter a room name.")
+        return
     await state.update_data(name=message.text)
     await state.set_state(EditRoomStates.capacity)
     await message.answer("Enter new room capacity:")
 
 
 @router.message(EditRoomStates.capacity)
-async def edit_room_capacity_handler(message: types.Message,state: FSMContext):
+async def edit_room_capacity_handler(message:types.Message,state:FSMContext):
     if not message.text.isdigit():
-        await message.answer("Please enter a valid number.")
+        await message.answer("Please enter a number.")
         return
-    await state.update_data(capacity=int(message.text))
+    capacity=int(message.text)
+    if capacity<=0:
+        await message.answer("Capacity must be greater than 0.")
+        return
+    await state.update_data(capacity=capacity)
     await state.set_state(EditRoomStates.confirm)
     data=await state.get_data()
-    await message.answer("Update this room?\n\n"+"Name: "+data["name"]+"\n"+"Capacity: "+str(data["capacity"])+"\n\n"+"Send Yes to confirm or No to cancel.")
+    await message.answer(
+        "Update this room?\n\n"+
+        "Name: "+data["name"]+"\n"+
+        "Capacity: "+str(data["capacity"])+"\n\n"+
+        "Send Yes to confirm or No to cancel."
+    )
 
 
 @router.message(EditRoomStates.confirm)
-async def edit_room_confirm_handler(message: types.Message,state: FSMContext):
+async def edit_room_confirm_handler(message:types.Message,state:FSMContext):
     user=await get_user_tg_id(message.from_user.id)
     if user is None or user["role"]!="admin":
         await state.clear()
@@ -687,17 +709,20 @@ async def edit_room_confirm_handler(message: types.Message,state: FSMContext):
         await message.answer("Please send Yes or No.")
         return
     data=await state.get_data()
-    await update_room(data["room_id"],data["name"],data["capacity"])
+    await update_room(
+        data["room_id"],
+        data["name"],
+        data["capacity"]
+    )
     await state.clear()
     await message.answer("Room updated successfully.")
 
 
-@router.callback_query(F.data.startswith("delete_room_"))
-async def delete_room_handler(callback: types.CallbackQuery,state: FSMContext):
+@router.callback_query(F.data.regexp(r"^delete_room_\d+$"))
+async def delete_room_handler(callback:types.CallbackQuery,state:FSMContext):
     user=await get_user_tg_id(callback.from_user.id)
     if user is None or user["role"]!="admin":
-        await callback.message.answer("You don't have permission to access this.")
-        await callback.answer()
+        await callback.answer("You don't have permission.",show_alert=True)
         return
     room_id=int(callback.data.split("_")[2])
     room=await get_room_by_id(room_id)
@@ -707,12 +732,17 @@ async def delete_room_handler(callback: types.CallbackQuery,state: FSMContext):
         return
     await state.update_data(room_id=room_id)
     await state.set_state(DeleteRoomStates.confirm)
-    await callback.message.answer("Delete this room?\n\n"+"Name: "+room["name"]+"\n"+"Capacity: "+str(room["capacity"])+"\n\n"+"Send Yes to confirm or No to cancel.")
+    await callback.message.answer(
+        "Delete this room?\n\n"+
+        "Name: "+room["name"]+"\n"+
+        "Capacity: "+str(room["capacity"])+"\n\n"+
+        "Send Yes to confirm or No to cancel."
+    )
     await callback.answer()
 
 
 @router.message(DeleteRoomStates.confirm)
-async def delete_room_confirm_handler(message: types.Message,state: FSMContext):
+async def delete_room_confirm_handler(message:types.Message,state:FSMContext):
     user=await get_user_tg_id(message.from_user.id)
     if user is None or user["role"]!="admin":
         await state.clear()
@@ -731,24 +761,21 @@ async def delete_room_confirm_handler(message: types.Message,state: FSMContext):
     await message.answer("Room deleted successfully.")
 
 
-
-
-
 @router.message(F.text=="Schedules")
-async def admin_schedules_handler(message: types.Message):
+async def admin_schedules_handler(message:types.Message):
     user=await get_user_tg_id(message.from_user.id)
     if user is None or user["role"]!="admin":
         await message.answer("You don't have permission to access this.")
         return
     schedules=await get_all_schedules()
     if not schedules:
-        await message.answer("There are no schedules.")
+        await message.answer("There are no schedules yet.",reply_markup=schedules_keyboard([]))
         return
     await message.answer("Schedules:",reply_markup=schedules_keyboard(schedules))
 
 
-@router.callback_query(F.data.startswith("schedule_"))
-async def admin_schedule_handler(callback: types.CallbackQuery):
+@router.callback_query(F.data.regexp(r"^schedule_\d+$"))
+async def admin_schedule_handler(callback:types.CallbackQuery):
     user=await get_user_tg_id(callback.from_user.id)
     if user is None or user["role"]!="admin":
         await callback.message.answer("You don't have permission to access this.")
@@ -761,35 +788,48 @@ async def admin_schedule_handler(callback: types.CallbackQuery):
         await callback.answer()
         return
     room_name=schedule["room_name"] if schedule["room_name"] else "No room"
-    await callback.message.answer("Schedule Details\n\n"+"Group: "+schedule["group_name"]+"\n"+"Weekday: "+schedule["weekday"]+"\n"+  "Start Time: "+str(schedule["start_time"])+"\n"+ "End Time: "+str(schedule["end_time"])+"\n"+"Room: "+room_name+"\n"+ "Active: "+str(schedule["is_active"]),reply_markup=schedule_actions_keyboard(schedule_id))
+    await callback.message.answer(
+        "Schedule Details\n\n"+
+        "Group: "+schedule["group_name"]+"\n"+
+        "Weekday: "+schedule["weekday"]+"\n"+
+        "Start Time: "+str(schedule["start_time"])+"\n"+
+        "End Time: "+str(schedule["end_time"])+"\n"+
+        "Room: "+room_name+"\n"+
+        "Active: "+str(schedule["is_active"]),
+        reply_markup=schedule_actions_keyboard(schedule_id)
+    )
     await callback.answer()
 
 
-@router.message(F.text=="Create Schedule")
-async def create_schedule_handler(message: types.Message,state: FSMContext):
-    user=await get_user_tg_id(message.from_user.id)
+@router.callback_query(F.data=="create_schedule")
+async def create_schedule_handler(callback:types.CallbackQuery,state:FSMContext):
+    user=await get_user_tg_id(callback.from_user.id)
     if user is None or user["role"]!="admin":
-        await message.answer("You don't have permission to access this.")
+        await callback.answer("You don't have permission.",show_alert=True)
         return
     groups=await get_all_groups()
     if not groups:
-        await message.answer("There are no groups.")
+        await callback.answer("There are no groups.")
         return
     await state.set_state(CreateScheduleStates.group)
-    await message.answer("Select group:",reply_markup=groups_keyboard(groups))
+    await callback.message.answer(
+        "Select group:",
+        reply_markup=schedule_groups_keyboard(groups)
+    )
+    await callback.answer()
 
 
-@router.callback_query(CreateScheduleStates.group,F.data.startswith("group_"))
-async def schedule_group_handler(callback: types.CallbackQuery,state: FSMContext):
-    group_id=int(callback.data.split("_")[1])
+@router.callback_query(CreateScheduleStates.group,F.data.regexp(r"^schedule_group_\d+$"))
+async def schedule_group_handler(callback:types.CallbackQuery,state:FSMContext):
+    group_id=int(callback.data.split("_")[2])
     await state.update_data(group_id=group_id)
     await state.set_state(CreateScheduleStates.weekday)
-    await callback.message.answer( "Enter weekday:\n\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday")
+    await callback.message.answer("Enter weekday:\n\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday")
     await callback.answer()
 
 
 @router.message(CreateScheduleStates.weekday)
-async def schedule_weekday_handler(message: types.Message,state: FSMContext):
+async def schedule_weekday_handler(message:types.Message,state:FSMContext):
     weekdays=[
         "Monday",
         "Tuesday",
@@ -808,36 +848,59 @@ async def schedule_weekday_handler(message: types.Message,state: FSMContext):
 
 
 @router.message(CreateScheduleStates.start_time)
-async def schedule_start_time_handler(message: types.Message,state: FSMContext):
+async def schedule_start_time_handler(message:types.Message,state:FSMContext):
     await state.update_data(start_time=message.text)
     await state.set_state(CreateScheduleStates.end_time)
     await message.answer("Enter end time:\nExample: 10:30")
 
+
 @router.message(CreateScheduleStates.end_time)
-async def schedule_end_time_handler(message: types.Message,state: FSMContext):
+async def schedule_end_time_handler(message:types.Message,state:FSMContext):
     await state.update_data(end_time=message.text)
     rooms=await get_all_rooms()
     if not rooms:
         await state.update_data(room_id=None)
         await state.set_state(CreateScheduleStates.confirm)
         data=await state.get_data()
-        await message.answer("Create this schedule?\n\n"+"Weekday: "+data["weekday"]+"\n"+"Start Time: "+data["start_time"]+"\n"+"End Time: "+data["end_time"]+"\n"+"Room: No room\n\n"+ "Send Yes to confirm or No to cancel.")
+        await message.answer(
+            "Create this schedule?\n\n"+
+            "Weekday: "+data["weekday"]+"\n"+
+            "Start Time: "+data["start_time"]+"\n"+
+            "End Time: "+data["end_time"]+"\n"+
+            "Room: No room\n\n"+
+            "Send Yes to confirm or No to cancel."
+        )
         return
     await state.set_state(CreateScheduleStates.room)
-    await message.answer("Select room:",reply_markup=rooms_keyboard(rooms))
+    await message.answer(
+        "Select room:",
+        reply_markup=schedule_rooms_keyboard(rooms)
+    )
 
-@router.callback_query(CreateScheduleStates.room,F.data.startswith("room_"))
-async def schedule_room_handler(callback: types.CallbackQuery,state: FSMContext):
-    room_id=int(callback.data.split("_")[1])
+
+@router.callback_query(CreateScheduleStates.room,F.data.regexp(r"^schedule_room_\d+$"))
+async def schedule_room_handler(callback:types.CallbackQuery,state:FSMContext):
+    room_id=int(callback.data.split("_")[2])
     await state.update_data(room_id=room_id)
     await state.set_state(CreateScheduleStates.confirm)
     data=await state.get_data()
     room=await get_room_by_id(room_id)
-    await callback.message.answer("Create this schedule?\n\n"+"Weekday: "+data["weekday"]+"\n"+  "Start Time: "+data["start_time"]+"\n"+ "End Time: "+data["end_time"]+"\n"+"Room: "+room["name"]+"\n\n"+"Send Yes to confirm or No to cancel.")
+    if room is None:
+        await callback.answer("Room not found.",show_alert=True)
+        return
+    await callback.message.answer(
+        "Create this schedule?\n\n"+
+        "Weekday: "+data["weekday"]+"\n"+
+        "Start Time: "+data["start_time"]+"\n"+
+        "End Time: "+data["end_time"]+"\n"+
+        "Room: "+room["name"]+"\n\n"+
+        "Send Yes to confirm or No to cancel."
+    )
     await callback.answer()
 
+
 @router.message(CreateScheduleStates.confirm)
-async def create_schedule_confirm_handler(message: types.Message,state: FSMContext):
+async def create_schedule_confirm_handler(message:types.Message,state:FSMContext):
     user=await get_user_tg_id(message.from_user.id)
     if user is None or user["role"]!="admin":
         await state.clear()
@@ -851,13 +914,19 @@ async def create_schedule_confirm_handler(message: types.Message,state: FSMConte
         await message.answer("Please send Yes or No.")
         return
     data=await state.get_data()
-    await create_schedule(data["group_id"],data["weekday"],data["start_time"],data["end_time"],data.get("room_id"))
+    await create_schedule(
+        data["group_id"],
+        data["weekday"],
+        data["start_time"],
+        data["end_time"],
+        data.get("room_id")
+    )
     await state.clear()
     await message.answer("Schedule created successfully.")
 
 
-@router.callback_query(F.data.startswith("delete_schedule_"))
-async def delete_schedule_handler(callback: types.CallbackQuery,state: FSMContext):
+@router.callback_query(F.data.regexp(r"^delete_schedule_\d+$"))
+async def delete_schedule_handler(callback:types.CallbackQuery,state:FSMContext):
     user=await get_user_tg_id(callback.from_user.id)
     if user is None or user["role"]!="admin":
         await callback.message.answer("You don't have permission to access this.")
@@ -871,11 +940,18 @@ async def delete_schedule_handler(callback: types.CallbackQuery,state: FSMContex
         return
     await state.update_data(schedule_id=schedule_id)
     await state.set_state(DeleteScheduleStates.confirm)
-    await callback.message.answer("Delete this schedule?\n\n"+  "Group: "+schedule["group_name"]+"\n"+"Weekday: "+schedule["weekday"]+"\n"+ "Time: "+str(schedule["start_time"])+" - "+str(schedule["end_time"])+"\n\n"+   "Send Yes to confirm or No to cancel.")
+    await callback.message.answer(
+        "Delete this schedule?\n\n"+
+        "Group: "+schedule["group_name"]+"\n"+
+        "Weekday: "+schedule["weekday"]+"\n"+
+        "Time: "+str(schedule["start_time"])+" - "+str(schedule["end_time"])+"\n\n"+
+        "Send Yes to confirm or No to cancel."
+    )
     await callback.answer()
 
+
 @router.message(DeleteScheduleStates.confirm)
-async def delete_schedule_confirm_handler(message: types.Message,state: FSMContext):
+async def delete_schedule_confirm_handler(message:types.Message,state:FSMContext):
     user=await get_user_tg_id(message.from_user.id)
     if user is None or user["role"]!="admin":
         await state.clear()
@@ -894,8 +970,8 @@ async def delete_schedule_confirm_handler(message: types.Message,state: FSMConte
     await message.answer("Schedule deleted successfully.")
 
 
-@router.callback_query(F.data.startswith("edit_schedule_"))
-async def edit_schedule_handler(callback: types.CallbackQuery,state: FSMContext):
+@router.callback_query(F.data.regexp(r"^edit_schedule_\d+$"))
+async def edit_schedule_handler(callback:types.CallbackQuery,state:FSMContext):
     user=await get_user_tg_id(callback.from_user.id)
     if user is None or user["role"]!="admin":
         await callback.message.answer("You don't have permission to access this.")
@@ -910,19 +986,36 @@ async def edit_schedule_handler(callback: types.CallbackQuery,state: FSMContext)
     await state.update_data(schedule_id=schedule_id)
     await state.set_state(EditScheduleStates.group)
     groups=await get_all_groups()
-    await callback.message.answer("Select new group:",reply_markup=groups_keyboard(groups))
+    if not groups:
+        await callback.answer("There are no groups.",show_alert=True)
+        return
+    await callback.message.answer(
+        "Select new group:",
+        reply_markup=groups_keyboard(groups)
+    )
     await callback.answer()
 
-@router.callback_query(EditScheduleStates.group,F.data.startswith("group_"))
-async def edit_schedule_group_handler(callback: types.CallbackQuery,state: FSMContext):
+
+@router.callback_query(EditScheduleStates.group,F.data.regexp(r"^group_\d+$"))
+async def edit_schedule_group_handler(callback:types.CallbackQuery,state:FSMContext):
     group_id=int(callback.data.split("_")[1])
     await state.update_data(group_id=group_id)
     await state.set_state(EditScheduleStates.weekday)
-    await callback.message.answer("Enter weekday:\n\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday")
+    await callback.message.answer(
+        "Enter weekday:\n\n"+
+        "Monday\n"+
+        "Tuesday\n"+
+        "Wednesday\n"+
+        "Thursday\n"+
+        "Friday\n"+
+        "Saturday\n"+
+        "Sunday"
+    )
     await callback.answer()
 
+
 @router.message(EditScheduleStates.weekday)
-async def edit_schedule_weekday_handler(message: types.Message,state: FSMContext):
+async def edit_schedule_weekday_handler(message:types.Message,state:FSMContext):
     weekdays=[
         "Monday",
         "Tuesday",
@@ -939,38 +1032,61 @@ async def edit_schedule_weekday_handler(message: types.Message,state: FSMContext
     await state.set_state(EditScheduleStates.start_time)
     await message.answer("Enter new start time:\nExample: 09:00")
 
+
 @router.message(EditScheduleStates.start_time)
-async def edit_schedule_start_time_handler(message: types.Message,state: FSMContext):
+async def edit_schedule_start_time_handler(message:types.Message,state:FSMContext):
     await state.update_data(start_time=message.text)
     await state.set_state(EditScheduleStates.end_time)
-    await message.answer("Enter end time:\nExample: 10:30")
+    await message.answer("Enter new end time:\nExample: 10:30")
+
 
 @router.message(EditScheduleStates.end_time)
-async def edit_schedule_end_time_handler(message: types.Message,state: FSMContext):
+async def edit_schedule_end_time_handler(message:types.Message,state:FSMContext):
     await state.update_data(end_time=message.text)
     rooms=await get_all_rooms()
     if not rooms:
         await state.update_data(room_id=None)
         await state.set_state(EditScheduleStates.confirm)
         data=await state.get_data()
-        await message.answer("Update this schedule?\n\n"+"Weekday: "+data["weekday"]+"\n"+"Start Time: "+data["start_time"]+"\n"+"End Time: "+data["end_time"]+"\n"+"Room: No room\n\n"+  "Send Yes to confirm or No to cancel.")
+        await message.answer(
+            "Update this schedule?\n\n"+
+            "Weekday: "+data["weekday"]+"\n"+
+            "Start Time: "+data["start_time"]+"\n"+
+            "End Time: "+data["end_time"]+"\n"+
+            "Room: No room\n\n"+
+            "Send Yes to confirm or No to cancel."
+        )
         return
     await state.set_state(EditScheduleStates.room)
-    await message.answer("Select new room:",reply_markup=rooms_keyboard(rooms))
+    await message.answer(
+        "Select new room:",
+        reply_markup=schedule_rooms_keyboard(rooms)
+    )
 
 
-@router.callback_query(EditScheduleStates.room,F.data.startswith("room_"))
-async def edit_schedule_room_handler(callback: types.CallbackQuery,state: FSMContext):
+@router.callback_query(EditScheduleStates.room,F.data.regexp(r"^room_\d+$"))
+async def edit_schedule_room_handler(callback:types.CallbackQuery,state:FSMContext):
     room_id=int(callback.data.split("_")[1])
     await state.update_data(room_id=room_id)
     await state.set_state(EditScheduleStates.confirm)
     data=await state.get_data()
     room=await get_room_by_id(room_id)
-    await callback.message.answer("Update this schedule?\n\n"+"Weekday: "+data["weekday"]+"\n"+"Start Time: "+data["start_time"]+"\n"+"End Time: "+data["end_time"]+"\n"+ "Room: "+room["name"]+"\n\n"+ "Send Yes to confirm or No to cancel.")
+    if room is None:
+        await callback.answer("Room not found.",show_alert=True)
+        return
+    await callback.message.answer(
+        "Update this schedule?\n\n"+
+        "Weekday: "+data["weekday"]+"\n"+
+        "Start Time: "+data["start_time"]+"\n"+
+        "End Time: "+data["end_time"]+"\n"+
+        "Room: "+room["name"]+"\n\n"+
+        "Send Yes to confirm or No to cancel."
+    )
     await callback.answer()
 
+
 @router.message(EditScheduleStates.confirm)
-async def edit_schedule_confirm_handler(message: types.Message,state: FSMContext):
+async def edit_schedule_confirm_handler(message:types.Message,state:FSMContext):
     user=await get_user_tg_id(message.from_user.id)
     if user is None or user["role"]!="admin":
         await state.clear()
@@ -984,26 +1100,30 @@ async def edit_schedule_confirm_handler(message: types.Message,state: FSMContext
         await message.answer("Please send Yes or No.")
         return
     data=await state.get_data()
-    await update_schedule(data["schedule_id"],data["group_id"],data["weekday"],  data["start_time"],data["end_time"],data.get("room_id"))
+    await update_schedule(
+        data["schedule_id"],
+        data["group_id"],
+        data["weekday"],
+        data["start_time"],
+        data["end_time"],
+        data.get("room_id")
+    )
     await state.clear()
     await message.answer("Schedule updated successfully.")
 
 
 
-@router.callback_query(F.data == "admin_lessons")
-async def admin_lessons_handler(callback: types.CallbackQuery):
-    user = await get_user_tg_id(callback.from_user.id)
-    if user is None or user["role"] != "admin":
-        await callback.answer("Access denied")
+@router.message(F.text=="Lessons")
+async def admin_lessons_handler(message:types.Message):
+    user=await get_user_tg_id(message.from_user.id)
+    if user is None or user["role"]!="admin":
+        await message.answer("You don't have permission to access this.")
         return
-    lessons = await get_today_lessons()
-    if not lessons:
-        await callback.message.answer("No lessons today")
-        await callback.answer()
-        return
-    await callback.message.answer(
-        "Today's lessons:", reply_markup=lessons_keyboard(lessons))
-    await callback.answer()
+    lessons=await get_today_lessons()
+    await message.answer(
+        "Today's lessons:",
+        reply_markup=lessons_keyboard(lessons)
+    )
 
 
 
@@ -1130,43 +1250,46 @@ async def lesson_subject_handler(message: types.Message,state: FSMContext):
 
 
 @router.message(CreateLessonStates.lesson_date)
-async def lesson_date_handler(message: types.Message,state: FSMContext):
-
-    await state.update_data(lesson_date=message.text)
-
+async def lesson_date_handler(message:types.Message,state:FSMContext):
+    try:
+        lesson_date=date.fromisoformat(message.text)
+    except ValueError:
+        await message.answer("Please enter the date like 2026-09-03.")
+        return
+    await state.update_data(lesson_date=lesson_date)
     await state.set_state(CreateLessonStates.start_time)
-
     await message.answer("Enter start time (HH:MM):")
 
-
 @router.message(CreateLessonStates.start_time)
-async def lesson_start_time_handler(message: types.Message,state: FSMContext):
-
-    await state.update_data(start_time=message.text)
-
+async def lesson_start_time_handler(message:types.Message,state:FSMContext):
+    try:
+        start_time=time.fromisoformat(message.text)
+    except ValueError:
+        await message.answer("Please enter the time like 09:00.")
+        return
+    await state.update_data(start_time=start_time)
     await state.set_state(CreateLessonStates.end_time)
-
     await message.answer("Enter end time (HH:MM):")
 
-
 @router.message(CreateLessonStates.end_time)
-async def lesson_end_time_handler(message: types.Message,state: FSMContext):
-
-    await state.update_data(end_time=message.text)
-
+async def lesson_end_time_handler(message:types.Message,state:FSMContext):
+    try:
+        end_time=time.fromisoformat(message.text)
+    except ValueError:
+        await message.answer("Please enter the time like 10:30.")
+        return
+    await state.update_data(end_time=end_time)
     await state.set_state(CreateLessonStates.confirm)
-
     data=await state.get_data()
-
     await message.answer(
-        "Create this lesson?\n\n"
-        +"Group ID: "+str(data["group"])+"\n"
-        +"Teacher ID: "+str(data["teacher"])+"\n"
-        +"Room ID: "+str(data["room"])+"\n"
-        +"Subject: "+data["subject"]+"\n"
-        +"Date: "+data["lesson_date"]+"\n"
-        +"Time: "+data["start_time"]+" - "+data["end_time"]+"\n\n"
-        +"Send Yes to confirm or No to cancel."
+        "Create this lesson?\n\n"+
+        "Group ID: "+str(data["group"])+"\n"+
+        "Teacher ID: "+str(data["teacher"])+"\n"+
+        "Room ID: "+str(data["room"])+"\n"+
+        "Subject: "+data["subject"]+"\n"+
+        "Date: "+str(data["lesson_date"])+"\n"+
+        "Time: "+str(data["start_time"])+" - "+str(data["end_time"])+"\n\n"+
+        "Send Yes to confirm or No to cancel."
     )
 
 
@@ -1249,3 +1372,34 @@ async def weekly_report_handler(message:types.Message):
         f"🟡 Excused: {excused}\n\n"
         f"📈 Attendance: {percentage}%"
     )
+
+
+
+@router.message(F.text=="Teacher Statistics")
+async def teacher_statistics_handler(message:types.Message):
+    user=await get_user_tg_id(message.from_user.id)
+    if user is None or user["role"]!="admin":
+        await message.answer("You don't have permission to access this.")
+        return
+    teachers=await get_teacher_statistics()
+    if not teachers:
+        await message.answer("No teacher statistics available.")
+        return
+    text="👨‍🏫 Teacher Statistics\n\n"
+    for teacher in teachers:
+        total=teacher["total_records"] or 0
+        attended=teacher["attended"] or 0
+        late=teacher["late"] or 0
+        absent=teacher["absent"] or 0
+        percentage=round(attended*100/total,2) if total else 0
+        text+=(
+            f"👤 {teacher['full_name']}\n"
+            f"📚 Lessons: {teacher['lessons'] or 0}\n"
+            f"👥 Records: {total}\n"
+            f"✅ Attended: {attended}\n"
+            f"⏰ Late: {late}\n"
+            f"❌ Absent: {absent}\n"
+            f"📈 Attendance: {percentage}%\n\n"
+        )
+    await message.answer(text)
+

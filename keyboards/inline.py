@@ -5,8 +5,17 @@ def groups_keyboard(groups):
     keyboard=[]
     for group in groups:
         keyboard.append([
-            InlineKeyboardButton(text=group["name"],callback_data=f"group_{group['id']}")
+            InlineKeyboardButton(
+                text=group["name"],
+                callback_data=f"group_{group['id']}"
+            )
         ])
+    keyboard.append([
+        InlineKeyboardButton(
+            text="➕ Create Group",
+            callback_data="create_group"
+        )
+    ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
@@ -31,8 +40,11 @@ def courses_keyboard(courses):
     keyboard=[]
     for course in courses:
         keyboard.append([
-            InlineKeyboardButton( text=course["name"], callback_data=f"course_{course['id']}" )
+            InlineKeyboardButton(text=course["name"],callback_data=f"course_{course['id']}")
         ])
+    keyboard.append([
+        InlineKeyboardButton(text="➕ Create Course",callback_data="create_course")
+    ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def course_actions_keyboard(course_id):
@@ -53,33 +65,86 @@ def rooms_keyboard(rooms):
     keyboard=[]
     for room in rooms:
         keyboard.append([
-            InlineKeyboardButton( text=room["name"], callback_data=f"room_{room['id']}" )
+            InlineKeyboardButton(
+                text=room["name"],
+                callback_data=f"room_{room['id']}"
+            )
         ])
+    keyboard.append([
+        InlineKeyboardButton(
+            text="➕ Create Room",
+            callback_data="create_room"
+        )
+    ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
+
+def room_actions_keyboard(room_id):
+    keyboard=InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Edit Room",
+                    callback_data=f"edit_room_{room_id}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Delete Room",
+                    callback_data=f"delete_room_{room_id}"
+                )
+            ]
+        ]
+    )
+    return keyboard
 
 def schedules_keyboard(schedules):
     keyboard=[]
     for schedule in schedules:
         keyboard.append([
-            InlineKeyboardButton( text=f"{schedule['weekday']} | {schedule['start_time']} - {schedule['end_time']}", callback_data=f"schedule_{schedule['id']}" )
+            InlineKeyboardButton(
+                text=f"{schedule['weekday']} | {schedule['start_time']} - {schedule['end_time']}",
+                callback_data=f"schedule_{schedule['id']}"
+            )
         ])
+    keyboard.append([
+        InlineKeyboardButton(
+            text="➕ Create Schedule",
+            callback_data="create_schedule"
+        )
+    ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def schedule_actions_keyboard(schedule_id):
     keyboard=InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Edit Schedule",callback_data=f"edit_schedule_{schedule_id}"
+                InlineKeyboardButton(
+                    text="Edit Schedule",
+                    callback_data=f"edit_schedule_{schedule_id}"
                 )
             ],
             [
-                InlineKeyboardButton(text="Delete Schedule",callback_data=f"delete_schedule_{schedule_id}"
+                InlineKeyboardButton(
+                    text="Delete Schedule",
+                    callback_data=f"delete_schedule_{schedule_id}"
                 )
             ]
         ]
     )
     return keyboard
+
+
+def schedule_groups_keyboard(groups):
+    keyboard=[]
+    for group in groups:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=group["name"],
+                callback_data=f"schedule_group_{group['id']}"
+            )
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def lessons_keyboard(lessons):
     keyboard=[]
@@ -196,24 +261,28 @@ def absent_lessons_keyboard(lessons):
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def attendance_lessons_keyboard(lessons):
+def check_in_lessons_keyboard(lessons):
     keyboard=[]
     for lesson in lessons:
         keyboard.append([
-            InlineKeyboardButton(text=f"{lesson['subject']} | {lesson['lesson_date']}",callback_data=f"manual_lesson_{lesson['id']}")
+            InlineKeyboardButton(
+                text=f"✅ {lesson['subject']} | {lesson['start_time']}-{lesson['end_time']}",
+                callback_data=f"checkin_lesson_{lesson['id']}"
+            )
         ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def groups_keyboard(groups):
+def check_out_lessons_keyboard(lessons):
     keyboard=[]
-    for group in groups:
+    for lesson in lessons:
         keyboard.append([
-            InlineKeyboardButton( text=group["name"], callback_data=f"group_{group['id']}")
+            InlineKeyboardButton(
+                text=f"🚪 {lesson['subject']} | {lesson['start_time']}-{lesson['end_time']}",
+                callback_data=f"checkout_lesson_{lesson['id']}"
+            )
         ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-
 def group_courses_keyboard(courses):
     keyboard=[]
     for course in courses:
@@ -232,18 +301,6 @@ def group_teachers_keyboard(teachers):
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def group_actions_keyboard(group_id):
-    keyboard=InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Edit Group",callback_data=f"edit_group_{group_id}")
-            ],
-            [
-                InlineKeyboardButton(text="Delete Group",callback_data=f"delete_group_{group_id}")
-            ]
-        ]
-    )
-    return keyboard
 
 
 def edit_group_courses_keyboard(courses):
@@ -280,25 +337,35 @@ def group_actions_keyboard(group_id):
 
 
 
-def rooms_keyboard(rooms):
+def lesson_actions_keyboard(lesson_id):
+    keyboard=[
+        [
+            InlineKeyboardButton(text="Edit",callback_data=f"edit_lesson_{lesson_id}"),
+            InlineKeyboardButton(text="Delete",callback_data=f"delete_lesson_{lesson_id}")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def schedule_rooms_keyboard(rooms):
     keyboard=[]
     for room in rooms:
         keyboard.append([
-            InlineKeyboardButton( text=room["name"], callback_data=f"room_{room['id']}"
+            InlineKeyboardButton(
+                text=room["name"],
+                callback_data=f"schedule_room_{room['id']}"
             )
         ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def lesson_actions_keyboard(lesson_id):
-    keyboard=InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Cancel Lesson",callback_data=f"cancel_lesson_{lesson_id}")
-            ],
-            [
-                InlineKeyboardButton(text="Completed",callback_data=f"complete_lesson_{lesson_id}")
-            ]
-        ]
-    )
-    return keyboard
+
+def attendance_lessons_keyboard(lessons):
+    keyboard=[]
+    for lesson in lessons:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{lesson['subject']} | {lesson['lesson_date']}",
+                callback_data=f"manual_lesson_{lesson['id']}"
+            )
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)

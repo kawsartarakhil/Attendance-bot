@@ -11,7 +11,9 @@ class CreateGroupStates(StatesGroup):
     room=State()
     confirm=State()
 
-
+class AttendanceStates(StatesGroup):
+    lesson=State()
+    
 class CreateScheduleStates(StatesGroup):
     group=State()
     weekday=State()
@@ -89,3 +91,9 @@ class CreateLessonStates(StatesGroup):
     start_time=State()
     end_time=State()
     confirm=State()
+
+
+
+class AddCourseStates(StatesGroup):
+    name=State()
+    description=State()
