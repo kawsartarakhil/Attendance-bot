@@ -92,7 +92,7 @@ async def get_group_statistics(group_id):
         await conn.close()
 
 
-async def get_teacher_statistics(teacher_id):
+async def get_teacher_statistics_by_id(teacher_id):
     conn=await get_connection()
     try:
         statistics=await conn.fetch("""
@@ -156,22 +156,6 @@ async def get_weekly_group_report(group_id):
         return report
     except Exception as er:
         print("get weekly group report error:",er)
-    finally:
-        await conn.close()
-
-
-async def get_monthly_report():
-    conn=await get_connection()
-    try:
-        report=await conn.fetch("""
-        select l.lesson_date,l.subject, ar.status from lessons l
-        left join attendance_records ar on l.id=ar.lesson_id
-        where l.lesson_date>=current_date-29
-        order by l.lesson_date
-        """)
-        return report
-    except Exception as er:
-        print("get monthly report error:",er)
     finally:
         await conn.close()
 

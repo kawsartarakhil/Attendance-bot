@@ -35,4 +35,16 @@ async def help_handler(message: types.Message):
 /start - Register the user if not already registered and start the program.
 
 /help - Show all available commands and buttons.
+
+/cancel - Cancel whatever multi-step action you're in the middle of.
 """)
+
+
+@router.message(Command("cancel"))
+async def cancel_handler(message: types.Message,state: FSMContext):
+    current_state=await state.get_state()
+    if current_state is None:
+        await message.answer("There is nothing to cancel.")
+        return
+    await state.clear()
+    await message.answer("Cancelled. Use /start to see your menu again.")

@@ -472,6 +472,40 @@ async def get_students_not_checked_in(lesson_id):
         await conn.close()
 
 
+async def get_students_with_low_attendance_by_teacher(teacher_id):
+    conn=await get_connection()
+    try:
+        students=await conn.fetch("""
+        select
+        s.id,
+        u.telegram_id,
+        u.full_name,
+        count(ar.id) as total_lessons,
+        count(ar.id) filter(
+            where ar.status in ('present','late','left_early')
+        ) as attended
+        from students s
+        join users u on s.user_id=u.id
+        join attendance_records ar on ar.student_id=s.id
+        join lessons l on ar.lesson_id=l.id
+        where l.teacher_id=$1
+        group by s.id,u.telegram_id,u.full_name
+        having count(ar.id)>0
+        and count(ar.id) filter(
+            where ar.status in ('present','late','left_early')
+        )*100.0/count(ar.id)<75
+        """,teacher_id)
+
+        return students
+
+    except Exception as er:
+        print("get low attendance students by teacher error:",er)
+        return []
+
+    finally:
+        await conn.close()
+
+
 async def get_students_with_low_attendance():
     conn=await get_connection()
     try:

@@ -359,6 +359,18 @@ def schedule_rooms_keyboard(rooms):
 
 
 
+def teacher_groups_keyboard(groups,prefix):
+    keyboard=[]
+    for group in groups:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=group["name"],
+                callback_data=f"{prefix}_{group['id']}"
+            )
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
 def attendance_lessons_keyboard(lessons):
     keyboard=[]
     for lesson in lessons:

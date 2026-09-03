@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 from database.connection import get_connection
 from servicce.user_services import get_user_tg_id
 from servicce.lesson_service import get_today_lessons,get_lesson_by_id
-from servicce.attendance_service import check_in,check_out,get_attendance_record,get_student_attendance,get_attendance_percentage,get_lesson_attendance,get_attendance_by_id,edit_attendance,get_attendance_edits,get_students_with_low_attendance
+from servicce.attendance_service import check_in,check_out,get_attendance_record,get_student_attendance,get_attendance_percentage,get_lesson_attendance,get_attendance_by_id,edit_attendance,get_attendance_edits,get_students_with_low_attendance,get_students_with_low_attendance_by_teacher
 from keyboards.inline import attendance_lessons_keyboard, present_lessons_keyboard,lessons_keyboard,attendance_status_keyboard
 from states import AttendanceStates,ManualAttendanceStates
 
@@ -91,8 +91,8 @@ async def get_student_today_lessons(student_id):
         l.end_time,
         l.group_id
         from lessons l
-        join students s on s.group_id=l.group_id
-        where s.id=$1
+        join group_students gs on gs.group_id=l.group_id
+        where gs.student_id=$1
         and l.lesson_date=current_date
         order by l.start_time
         """,student_id)
@@ -373,7 +373,7 @@ async def today_lessons_handler(message:types.Message):
     await message.answer("You don't have permission.")
 
 
-@router.message(F.text=="Attendance")
+@router.message(F.text.in_(["Attendance","Today's Attendance"]))
 async def teacher_attendance_menu(message:types.Message):
     user=await get_user_tg_id(message.from_user.id)
 
@@ -486,11 +486,18 @@ async def attendance_corrections_handler(message:types.Message):
 async def manual_lesson_handler(callback:types.CallbackQuery,state:FSMContext):
     user=await get_user_tg_id(callback.from_user.id)
 
-    if user is None or user["role"]!="admin":
+    if user is None or user["role"] not in ("admin","teacher"):
         await callback.answer("Access denied.",show_alert=True)
         return
 
     lesson_id=int(callback.data.split("_")[2])
+
+    if user["role"]=="teacher":
+        lesson=await get_lesson_by_id(lesson_id)
+        teacher_id=await get_teacher_id_by_telegram_id(callback.from_user.id)
+        if lesson is None or teacher_id is None or lesson["teacher_id"]!=teacher_id:
+            await callback.answer("This is not your lesson.",show_alert=True)
+            return
 
     attendance=await get_lesson_attendance(lesson_id)
 
@@ -524,7 +531,7 @@ async def manual_lesson_handler(callback:types.CallbackQuery,state:FSMContext):
 async def manual_attendance_handler(callback:types.CallbackQuery,state:FSMContext):
     user=await get_user_tg_id(callback.from_user.id)
 
-    if user is None or user["role"]!="admin":
+    if user is None or user["role"] not in ("admin","teacher"):
         await callback.answer("Access denied.",show_alert=True)
         return
 
@@ -535,6 +542,13 @@ async def manual_attendance_handler(callback:types.CallbackQuery,state:FSMContex
     if attendance is None:
         await callback.answer("Attendance record not found.",show_alert=True)
         return
+
+    if user["role"]=="teacher":
+        lesson=await get_lesson_by_id(attendance["lesson_id"])
+        teacher_id=await get_teacher_id_by_telegram_id(callback.from_user.id)
+        if lesson is None or teacher_id is None or lesson["teacher_id"]!=teacher_id:
+            await callback.answer("This is not your lesson.",show_alert=True)
+            return
 
     await state.update_data(
         attendance_id=attendance_id,
@@ -557,7 +571,7 @@ async def manual_attendance_handler(callback:types.CallbackQuery,state:FSMContex
 async def manual_status_handler(callback:types.CallbackQuery,state:FSMContext):
     user=await get_user_tg_id(callback.from_user.id)
 
-    if user is None or user["role"]!="admin":
+    if user is None or user["role"] not in ("admin","teacher"):
         await callback.answer("Access denied.",show_alert=True)
         return
 
@@ -593,7 +607,7 @@ async def manual_status_handler(callback:types.CallbackQuery,state:FSMContext):
 async def manual_reason_handler(message:types.Message,state:FSMContext):
     user=await get_user_tg_id(message.from_user.id)
 
-    if user is None or user["role"]!="admin":
+    if user is None or user["role"] not in ("admin","teacher"):
         await state.clear()
         await message.answer("You don't have permission to access this.")
         return
@@ -621,7 +635,7 @@ async def manual_reason_handler(message:types.Message,state:FSMContext):
 async def manual_confirm_handler(message:types.Message,state:FSMContext):
     user=await get_user_tg_id(message.from_user.id)
 
-    if user is None or user["role"]!="admin":
+    if user is None or user["role"] not in ("admin","teacher"):
         await state.clear()
         await message.answer("You don't have permission to access this.")
         return
@@ -656,11 +670,18 @@ async def manual_confirm_handler(message:types.Message,state:FSMContext):
 async def students_at_risk_handler(message:types.Message):
     user=await get_user_tg_id(message.from_user.id)
 
-    if user is None or user["role"]!="admin":
+    if user is None or user["role"] not in ("admin","teacher"):
         await message.answer("You don't have permission to access this.")
         return
 
-    students=await get_students_with_low_attendance()
+    if user["role"]=="teacher":
+        teacher_id=await get_teacher_id_by_telegram_id(message.from_user.id)
+        if teacher_id is None:
+            await message.answer("Teacher profile not found.")
+            return
+        students=await get_students_with_low_attendance_by_teacher(teacher_id)
+    else:
+        students=await get_students_with_low_attendance()
 
     if not students:
         await message.answer("No students are currently below 75% attendance.")
