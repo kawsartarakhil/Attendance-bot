@@ -195,3 +195,19 @@ async def get_teacher_today_lessons(teacher_id):
         print("get teacher today lessons error:",er)
     finally:
         await conn.close()
+
+
+async def get_finished_lessons():
+    conn=await get_connection()
+    try:
+        lessons=await conn.fetch("""
+        select id from lessons
+        where lesson_date=current_date
+        and end_time<current_time
+        and status!='cancelled'
+        """)
+        return lessons
+    except Exception as er:
+        print("get finished lessons error:",er)
+    finally:
+        await conn.close()
