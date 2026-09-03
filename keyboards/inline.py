@@ -141,3 +141,38 @@ def pagination_keyboard(page,total_pages,prefix):
     )
 
     return keyboard
+
+
+def present_lessons_keyboard(lessons):
+    keyboard=[]
+    for lesson in lessons:
+        keyboard.append([
+            InlineKeyboardButton(text=f"{lesson['subject']} | {lesson['lesson_date']}",callback_data=f"present_lesson_{lesson['id']}")
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def late_lessons_keyboard(lessons):
+    keyboard=[]
+    for lesson in lessons:
+        keyboard.append([
+            InlineKeyboardButton(text=f"{lesson['subject']} | {lesson['lesson_date']}",callback_data=f"late_lesson_{lesson['id']}"
+            )
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def absent_lessons_keyboard(lessons):
+    keyboard=[]
+    for lesson in lessons:
+        keyboard.append([
+            InlineKeyboardButton(text=f"{lesson['subject']} | {lesson['lesson_date']}",callback_data=f"absent_lesson_{lesson['id']}")
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def attendance_lessons_keyboard(lessons):
+    keyboard=[]
+    for lesson in lessons:
+        keyboard.append([
+            InlineKeyboardButton(text=f"{lesson['subject']} | {lesson['lesson_date']}",callback_data=f"manual_lesson_{lesson['id']}")
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)

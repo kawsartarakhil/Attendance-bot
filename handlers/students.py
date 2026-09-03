@@ -11,9 +11,6 @@ router=Router()
 @router.message(F.text=="Check In")
 async def check_in_handler(message: types.Message):
     user=await get_user_tg_id(message.from_user.id)
-    if user is None:
-        await message.answer("User not found. Please use /start first.")
-        return
     student=await get_student_by_user_id(user["id"])
     if student is None:
         await message.answer("Student profile not found.")
@@ -30,8 +27,11 @@ async def check_in_handler(message: types.Message):
     if attendance is None:
         await message.answer("Attendance record not found.")
         return
-    await check_in(lesson["id"],student["id"] )
-    await message.answer(f"Checked in successfully \n\nSubject: {lesson['subject']}")
+    result=await check_in(lesson["id"],student["id"])
+    if result is False:
+        await message.answer("You already checked in.")
+        return
+    await message.answer(f"Checked in successfully\n\nSubject: {lesson['subject']}")    
 
 @router.message(F.text=="Check Out")
 async def check_out_handler(message: types.Message):
@@ -53,8 +53,11 @@ async def check_out_handler(message: types.Message):
     if attendance is None:
         await message.answer("Attendance record not found.")
         return
-    await check_out(lesson["id"],student["id"])
-    await message.answer(f"Checked out successfully\n\nSubject: {lesson['subject']}")
+    result=await check_out(lesson["id"],student["id"])
+    if result is False:
+        await message.answer("You must check in first or you already checked out.")
+        return
+    await message.answer(f"Checked out successfully\n\nSubject: {lesson['subject']}")       
 
 @router.message(F.text=="Today's Lesson")
 async def today_lesson_handler(message: types.Message):

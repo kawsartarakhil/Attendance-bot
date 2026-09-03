@@ -16,11 +16,11 @@ async def start_handler(message: types.Message,state: FSMContext):
         await message.answer("Welcome To our AI student attendance analytics bot\n\nPlease enter your full name:")
         return
     if user["role"]=="student":
-        await message.answer(f"Welcome {user['name']}",reply_markup=student_menu())
+        await message.answer(f"Welcome {user['full_name']}",reply_markup=student_menu())
     elif user["role"]=="teacher":
-        await message.answer(f"Welcome Teacher {user['name']}",reply_markup=teacher_menu())
+        await message.answer(f"Welcome Teacher {user['full_name']}",reply_markup=teacher_menu())
     elif user["role"]=="admin":
-        await message.answer(f"Welcome Admin {user['name']}",reply_markup=admin_menu())
+        await message.answer(f"Welcome Admin {user['full_name']}",reply_markup=admin_menu())
 
 @router.message(RegistrationStates.full_name)
 async def register_full_name(message: types.Message,state: FSMContext):

@@ -12,6 +12,22 @@ async def create_lesson(group_id,teacher_id,room_id,subject,lesson_date,start_ti
         insert into lessons(group_id,teacher_id,room_id,subject,lesson_date,start_time,end_time)
         values($1,$2,$3,$4,$5,$6,$7)
         """,group_id,teacher_id,room_id,subject,lesson_date,start_time,end_time)
+        lesson=await conn.fetchrow("""
+        select id from lessons
+        where group_id=$1 and teacher_id=$2 and subject=$3 and lesson_date=$4 and start_time=$5 and end_time=$6
+        order by id desc
+        limit 1
+        """,group_id,teacher_id,subject,lesson_date,start_time,end_time)
+        students=await conn.fetch("""
+        select student_id from group_students
+        where group_id=$1
+        """,group_id)
+        for student in students:
+            await conn.execute("""
+            insert into attendance_records(lesson_id,student_id)
+            values($1,$2)
+            """,lesson["id"],student["student_id"])
+
     except Exception as er:
         print("create lesson error:",er)
     finally:
@@ -157,5 +173,25 @@ async def cancel_lesson(lesson_id):
         """,lesson_id)
     except Exception as er:
         print("cancel lesson error:",er)
+    finally:
+        await conn.close()
+
+async def get_teacher_today_lessons(teacher_id):
+    conn=await get_connection()
+    try:
+        lessons=await conn.fetch("""
+        select l.id,l.group_id,g.name as group_name,l.teacher_id,
+        u.full_name as teacher_name,l.room_id,r.name as room_name,
+        l.subject,l.lesson_date,l.start_time,l.end_time,l.status from lessons l
+        join groups g on l.group_id=g.id
+        join teachers t on l.teacher_id=t.id
+        join users u on t.user_id=u.id
+        left join rooms r on l.room_id=r.id
+        where l.teacher_id=$1 and l.lesson_date=current_date
+        order by l.start_time
+        """,teacher_id)
+        return lessons
+    except Exception as er:
+        print("get teacher today lessons error:",er)
     finally:
         await conn.close()

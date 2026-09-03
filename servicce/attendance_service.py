@@ -3,10 +3,20 @@ from database.connection import get_connection
 async def check_in(lesson_id,student_id):
     conn=await get_connection()
     try:
-        await conn.execute("""
-        update attendance_records set check_in_time=current_timestamp
+        attendance=await conn.fetchrow("""
+        select check_in_time from attendance_records
         where lesson_id=$1 and student_id=$2
         """,lesson_id,student_id)
+        if attendance is None:
+            return False
+        if attendance["check_in_time"] is not None:
+            return False
+        await conn.execute("""
+        update attendance_records set check_in_time=current_timestamp,status='present'
+        where lesson_id=$1 and student_id=$2
+        """,lesson_id,student_id)
+        await calculate_late_minutes(lesson_id,student_id)
+        return True
     except Exception as er:
         print("check in error:",er)
     finally:
@@ -15,10 +25,22 @@ async def check_in(lesson_id,student_id):
 async def check_out(lesson_id,student_id):
     conn=await get_connection()
     try:
+        attendance=await conn.fetchrow("""
+        select check_in_time,check_out_time
+        from attendance_records
+        where lesson_id=$1 and student_id=$2
+        """,lesson_id,student_id)
+        if attendance is None or attendance["check_in_time"] is None:
+            return False
+        if attendance["check_out_time"] is not None:
+            return False
         await conn.execute("""
         update attendance_records set check_out_time=current_timestamp
         where lesson_id=$1 and student_id=$2
         """,lesson_id,student_id)
+        await calculate_early_leave_minutes(lesson_id,student_id)
+        await calculate_time_in_class(lesson_id,student_id)
+        return True
     except Exception as er:
         print("check out error:",er)
     finally:
@@ -128,11 +150,18 @@ async def calculate_late_minutes(lesson_id,student_id):
         join lessons l on ar.lesson_id=l.id
         where ar.lesson_id=$1 and ar.student_id=$2
         """,lesson_id,student_id)
-        late_minutes=max(0,(result["check_in_time"].time()-result["start_time"]).seconds//60)
+        if result is None or result["check_in_time"] is None:
+            return 0
+        check_in=result["check_in_time"].time()
+        start_time=result["start_time"]
+        late_minutes=(check_in.hour*60+check_in.minute)-(start_time.hour*60+start_time.minute)
+        if late_minutes<0:
+            late_minutes=0
+        status="late" if late_minutes>0 else "present"
         await conn.execute("""
-        update attendance_records set late_minutes=$1
-        where lesson_id=$2 and student_id=$3
-        """,late_minutes,lesson_id,student_id)
+        update attendance_records set late_minutes=$1,status=$2
+        where lesson_id=$3 and student_id=$4
+        """,late_minutes,status,lesson_id,student_id)
         return late_minutes
     except Exception as er:
         print("calculate late minutes error:",er)
@@ -143,13 +172,16 @@ async def calculate_early_leave_minutes(lesson_id,student_id):
     conn=await get_connection()
     try:
         result=await conn.fetchrow("""
-        select ar.check_out_time,l.end_time from attendance_records ar
+        select ar.check_out_time,l.end_time
+        from attendance_records ar
         join lessons l on ar.lesson_id=l.id
         where ar.lesson_id=$1 and ar.student_id=$2
         """,lesson_id,student_id)
+        if result is None or result["check_out_time"] is None:
+            return 0
         end_time=result["end_time"]
-        check_out=result["check_out_time"]
-        early_leave_minutes=(end_time.hour*60+end_time.minute)-(check_out.time().hour*60+check_out.time().minute)
+        check_out=result["check_out_time"].time()
+        early_leave_minutes=(end_time.hour*60+end_time.minute)-(check_out.hour*60+check_out.minute)
         if early_leave_minutes<0:
             early_leave_minutes=0
         await conn.execute("""
@@ -166,13 +198,19 @@ async def calculate_time_in_class(lesson_id,student_id):
     conn=await get_connection()
     try:
         result=await conn.fetchrow("""
-        select check_in_time,check_out_time from attendance_records
+        select check_in_time,check_out_time
+        from attendance_records
         where lesson_id=$1 and student_id=$2
         """,lesson_id,student_id)
-        #this basically subtracts the check in time from check out get the nu, of second andd chamge it back to minutes
+        if result is None:
+            return 0
+        if result["check_in_time"] is None or result["check_out_time"] is None:
+            return 0
         check_in=result["check_in_time"]
         check_out=result["check_out_time"]
         time_in_class=(check_out.hour*60+check_out.minute)-(check_in.hour*60+check_in.minute)
+        if time_in_class<0:
+            time_in_class=0
         await conn.execute("""
         update attendance_records set time_in_class=$1
         where lesson_id=$2 and student_id=$3
@@ -189,7 +227,7 @@ async def mark_absent_students(lesson_id):
     try:
         await conn.execute("""
         update attendance_records set status='absent'
-        where lesson_id=$1 and check_in_time is null
+        where lesson_id=$1 and check_in_time is null and status is null
         """,lesson_id)
     except Exception as er:
         print("mark absent students error:",er)
