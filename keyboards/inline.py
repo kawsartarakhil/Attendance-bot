@@ -1,23 +1,33 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
-def groups_keyboard(groups):
-    keyboard=[]
+
+def groups_keyboard(groups, is_admin=False):
+    buttons = []
+
     for group in groups:
-        keyboard.append([
+
+        if is_admin:
+            callback = f"group_{group['id']}"
+        else:
+            callback = f"teacher_group_{group['id']}"
+
+        buttons.append([
             InlineKeyboardButton(
                 text=group["name"],
-                callback_data=f"group_{group['id']}"
+                callback_data=callback
             )
         ])
-    keyboard.append([
-        InlineKeyboardButton(
-            text="➕ Create Group",
-            callback_data="create_group"
-        )
-    ])
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
+    if is_admin:
+        buttons.append([
+            InlineKeyboardButton(
+                text="➕ Create Group",
+                callback_data="create_group"
+            )
+        ])
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def students_keyboard(students):
     keyboard=[]

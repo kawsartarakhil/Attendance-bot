@@ -97,3 +97,7 @@ class CreateLessonStates(StatesGroup):
 class AddCourseStates(StatesGroup):
     name=State()
     description=State()
+
+
+class SettingsStates(StatesGroup):
+    value=State()

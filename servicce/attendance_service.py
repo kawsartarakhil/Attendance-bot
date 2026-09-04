@@ -1,4 +1,5 @@
 from database.connection import get_connection
+from servicce.settings import get_setting
 
 async def check_in(lesson_id,student_id):
     conn=await get_connection()
@@ -243,7 +244,11 @@ async def calculate_late_minutes(lesson_id,student_id):
         if late_minutes<0:
             late_minutes=0
 
-        status="late" if late_minutes>0 else "present"
+        allowed_late=await get_setting("late_minutes")
+        if allowed_late is None:
+            allowed_late=10
+
+        status="late" if late_minutes>allowed_late else "present"
 
         await conn.execute("""
         update attendance_records
@@ -285,7 +290,11 @@ async def calculate_early_leave_minutes(lesson_id,student_id):
         if early_leave_minutes<0:
             early_leave_minutes=0
 
-        if early_leave_minutes>0:
+        allowed_early_leave=await get_setting("early_leave_minutes")
+        if allowed_early_leave is None:
+            allowed_early_leave=10
+
+        if early_leave_minutes>allowed_early_leave:
             status="left_early"
         elif result["status"]=="late":
             status="late"

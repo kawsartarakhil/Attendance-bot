@@ -136,6 +136,11 @@ async def init_tables():
         created_at timestamp default current_timestamp
     );
 
+    create table if not exists settings (
+    key varchar(100) primary key,
+    value integer
+);
+
     """)
         print("tables created")
 

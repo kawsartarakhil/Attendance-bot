@@ -13,6 +13,12 @@ from keyboards.inline import rooms_keyboard,room_actions_keyboard, schedule_grou
 from servicce.lesson_service import create_lesson,get_lesson_by_id,get_today_lessons,update_lesson_status,cancel_lesson
 from states import AddCourseStates, CreateCourseStates, CreateLessonStates,EditCourseStates,DeleteCourseStates,CreateGroupStates,EditGroupStates,DeleteGroupStates,CreateRoomStates,EditRoomStates,DeleteRoomStates,CreateScheduleStates,EditScheduleStates,DeleteScheduleStates
 from servicce.group_service import get_all_groups,get_group_by_id,create_group,update_group,delete_group,get_group_students
+from servicce.analytics_service import get_group_statistics
+from servicce.attendance_service import get_students_with_low_attendance
+from servicce.settings import get_setting,set_setting,get_all_settings
+from servicce.ai_service import generate_monthly_summary,analyze_attendance_risk
+from keyboards.inline import teacher_groups_keyboard
+from states import SettingsStates
 from aiogram.types import CallbackQuery
 router=Router()
 
@@ -128,9 +134,9 @@ async def admin_teachers_handler(message: types.Message):
         return
     await message.answer("Teachers:",reply_markup=teachers_keyboard(teachers))
 
-@router.callback_query(F.data.startswith("teacher_"))
-async def admin_teacher_handler(callback: types.CallbackQuery):
-    teacher_id=int(callback.data.split("_")[1])
+@router.callback_query(F.data.regexp(r"^teacher_\d+$"))
+async def admin_teacher_handler(callback: CallbackQuery):
+    teacher_id = int(callback.data.split("_")[1])
     user=await get_user_tg_id(callback.from_user.id)
     if user is None or user["role"]!="admin":
         await callback.message.answer("You don't have permission to access this.")
@@ -314,49 +320,90 @@ async def delete_course_confirm_handler(message: types.Message,state: FSMContext
     await state.clear()
     await message.answer("Course deleted successfully.")
 
-@router.message(F.text=="Groups")
-async def admin_groups_handler(message:types.Message,state:FSMContext):
+@router.message(F.text == "Groups")
+async def admin_groups_handler(message: types.Message, state: FSMContext):
     await state.clear()
-    user=await get_user_tg_id(message.from_user.id)
+
+    user = await get_user_tg_id(message.from_user.id)
+
     if user is None:
         await message.answer("User not found.")
         return
-    if user["role"]!="admin":
+
+    if user["role"] != "admin":
         await message.answer("You don't have permission to access this.")
         return
-    groups=await get_all_groups()
-    await message.answer("Groups:",reply_markup=groups_keyboard(groups))
 
+    groups = await get_all_groups()
+
+    if not groups:
+        await message.answer(
+            "There are no groups yet.",
+            reply_markup=groups_keyboard([], is_admin=True)
+        )
+        return
+
+    await message.answer(
+        "Groups:",
+        reply_markup=groups_keyboard(groups, is_admin=True)
+    )
 
 @router.callback_query(F.data.regexp(r"^group_\d+$"))
 async def admin_group_handler(callback: types.CallbackQuery):
-    if not callback.data.split("_")[1].isdigit():
-        return
-    user=await get_user_tg_id(callback.from_user.id)
-    if user is None or user["role"]!="admin":
-        await callback.message.answer("You don't have permission to access this.")
-        await callback.answer()
-        return
-    group_id=int(callback.data.split("_")[1])
-    group=await get_group_by_id(group_id)
-    if group is None:
-        await callback.message.answer("Group not found.")
-        await callback.answer()
-        return
-    students=await get_group_students(group_id)
-    if students:
-        student_text=""
-        for student in students:
-            student_text+=student["full_name"]+"\n"
-    else:
-        student_text="No students assigned"
-    if group["teacher_id"] is None:
-        teacher_text="Not assigned"
-    else:
-        teacher_text=str(group["teacher_id"])
-    await callback.message.answer("Group Details\n\n"+"Group ID: "+str(group["id"])+"\n"+ "Name: "+group["name"]+"\n"+"Course: "+group["course_name"]+"\n"+"Teacher ID: "+teacher_text+"\n"+"Students:\n"+student_text,reply_markup=group_actions_keyboard(group_id))
-    await callback.answer()
 
+    user = await get_user_tg_id(callback.from_user.id)
+
+    if user is None:
+        await callback.answer(
+            "User not found.",
+            show_alert=True
+        )
+        return
+
+    if user["role"] != "admin":
+        await callback.answer(
+            "You don't have permission to access this.",
+            show_alert=True
+        )
+        return
+
+    group_id = int(callback.data.split("_")[1])
+
+    group = await get_group_by_id(group_id)
+
+    if group is None:
+        await callback.answer(
+            "Group not found.",
+            show_alert=True
+        )
+        return
+
+    students = await get_group_students(group_id)
+
+    if students:
+        student_text = ""
+
+        for student in students:
+            student_text += f"👤 {student['full_name']}\n"
+    else:
+        student_text = "No students assigned"
+
+    if group["teacher_id"] is None:
+        teacher_text = "Not assigned"
+    else:
+        teacher_text = str(group["teacher_id"])
+
+    await callback.message.answer(
+        "👥 Group Details\n\n"
+        f"Group ID: {group['id']}\n"
+        f"Name: {group['name']}\n"
+        f"Course: {group['course_name']}\n"
+        f"Teacher ID: {teacher_text}\n\n"
+        f"Students:\n{student_text}",
+        reply_markup=group_actions_keyboard(group_id)
+    )
+
+    await callback.answer()
 
 @router.callback_query(F.data=="create_group")
 async def create_group_handler(callback:CallbackQuery,state:FSMContext):
@@ -1113,20 +1160,40 @@ async def edit_schedule_confirm_handler(message:types.Message,state:FSMContext):
 
 
 
-@router.message(F.text=="Lessons")
-async def admin_lessons_handler(message:types.Message):
-    user=await get_user_tg_id(message.from_user.id)
-    if user is None or user["role"]!="admin":
+@router.message(F.text == "Lessons")
+async def admin_lessons_handler(message: types.Message, state: FSMContext):
+    user = await get_user_tg_id(message.from_user.id)
+
+    if user is None or user["role"] != "admin":
         await message.answer("You don't have permission to access this.")
         return
-    lessons=await get_today_lessons()
-    await message.answer(
-        "Today's lessons:",
-        reply_markup=lessons_keyboard(lessons)
+
+    # Clear any previous FSM state
+    await state.clear()
+
+    lessons = await get_today_lessons()
+
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text="➕ Create Lesson",
+                    callback_data="create_lesson"
+                )
+            ]
+        ]
     )
 
+    if lessons:
+        lesson_keyboard = lessons_keyboard(lessons)
 
+        keyboard.inline_keyboard.extend(
+            lesson_keyboard.inline_keyboard
+        )
 
+    await message.answer("Today's lessons:",reply_markup=keyboard)
+
+    
 @router.callback_query(F.data.startswith("lesson_"))
 async def admin_lesson_handler(callback: types.CallbackQuery):
     user=await get_user_tg_id(callback.from_user.id)
@@ -1155,10 +1222,7 @@ async def admin_lesson_handler(callback: types.CallbackQuery):
     text+="Time: "+str(lesson["start_time"])+" - "+str(lesson["end_time"])+"\n"
     text+="Status: "+str(lesson["status"])
 
-    await callback.message.answer(
-        text,
-        reply_markup=lesson_actions_keyboard(lesson_id)
-    )
+    await callback.message.answer(text,reply_markup=lesson_actions_keyboard(lesson_id))
 
     await callback.answer()
 
@@ -1330,6 +1394,10 @@ async def create_lesson_confirm_handler(message: types.Message,state: FSMContext
 
 @router.message(F.text=="Monthly Reports")
 async def monthly_report_handler(message:types.Message):
+    user=await get_user_tg_id(message.from_user.id)
+    if user is None or user["role"]!="admin":
+        await message.answer("You don't have permission to access this.")
+        return
     report=await get_monthly_report()
     total=report["total_records"] or 0
     attended=report["attended"] or 0
@@ -1403,3 +1471,302 @@ async def teacher_statistics_handler(message:types.Message):
         )
     await message.answer(text)
 
+
+# ---- Reports hub ----
+
+@router.message(F.text=="Reports")
+async def reports_hub_handler(message:types.Message):
+    user=await get_user_tg_id(message.from_user.id)
+    if user is None or user["role"]!="admin":
+        await message.answer("You don't have permission to access this.")
+        return
+
+    keyboard=types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Weekly Report",callback_data="rep_weekly")],
+        [types.InlineKeyboardButton(text="Monthly Report",callback_data="rep_monthly")],
+        [types.InlineKeyboardButton(text="Teacher Statistics",callback_data="rep_teacher")],
+        [types.InlineKeyboardButton(text="Students at Risk",callback_data="rep_risk")],
+    ])
+
+    await message.answer("Select a report:",reply_markup=keyboard)
+
+
+@router.callback_query(F.data=="rep_weekly")
+async def reports_hub_weekly(callback:CallbackQuery):
+    user=await get_user_tg_id(callback.from_user.id)
+    if user is None or user["role"]!="admin":
+        await callback.answer("Access denied.",show_alert=True)
+        return
+
+    report=await get_weekly_report()
+    total=report["total_records"] or 0
+    attended=report["attended"] or 0
+    late=report["late"] or 0
+    absent=report["absent"] or 0
+    excused=report["excused"] or 0
+    percentage=round(attended*100/total,2) if total else 0
+
+    await callback.message.answer(
+        f"📊 Weekly Attendance Report\n\n"
+        f"📚 Lessons: {report['lessons'] or 0}\n"
+        f"👥 Attendance records: {total}\n"
+        f"✅ Attended: {attended}\n"
+        f"⏰ Late: {late}\n"
+        f"❌ Absent: {absent}\n"
+        f"🟡 Excused: {excused}\n\n"
+        f"📈 Attendance: {percentage}%"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data=="rep_monthly")
+async def reports_hub_monthly(callback:CallbackQuery):
+    user=await get_user_tg_id(callback.from_user.id)
+    if user is None or user["role"]!="admin":
+        await callback.answer("Access denied.",show_alert=True)
+        return
+
+    report=await get_monthly_report()
+    total=report["total_records"] or 0
+    attended=report["attended"] or 0
+    late=report["late"] or 0
+    absent=report["absent"] or 0
+    excused=report["excused"] or 0
+    percentage=round(attended*100/total,2) if total else 0
+
+    await callback.message.answer(
+        f"📊 Monthly Attendance Report\n\n"
+        f"📚 Lessons: {report['lessons'] or 0}\n"
+        f"👥 Attendance records: {total}\n"
+        f"✅ Attended: {attended}\n"
+        f"⏰ Late: {late}\n"
+        f"❌ Absent: {absent}\n"
+        f"🟡 Excused: {excused}\n\n"
+        f"📈 Attendance: {percentage}%"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data=="rep_teacher")
+async def reports_hub_teacher(callback:CallbackQuery):
+    user=await get_user_tg_id(callback.from_user.id)
+    if user is None or user["role"]!="admin":
+        await callback.answer("Access denied.",show_alert=True)
+        return
+
+    teachers=await get_teacher_statistics()
+
+    if not teachers:
+        await callback.message.answer("No teacher statistics available.")
+        await callback.answer()
+        return
+
+    text="👨‍🏫 Teacher Statistics\n\n"
+    for teacher in teachers:
+        total=teacher["total_records"] or 0
+        attended=teacher["attended"] or 0
+        late=teacher["late"] or 0
+        absent=teacher["absent"] or 0
+        percentage=round(attended*100/total,2) if total else 0
+        text+=(
+            f"👤 {teacher['full_name']}\n"
+            f"📚 Lessons: {teacher['lessons'] or 0}\n"
+            f"👥 Records: {total}\n"
+            f"✅ Attended: {attended}\n"
+            f"⏰ Late: {late}\n"
+            f"❌ Absent: {absent}\n"
+            f"📈 Attendance: {percentage}%\n\n"
+        )
+
+    await callback.message.answer(text)
+    await callback.answer()
+
+
+@router.callback_query(F.data=="rep_risk")
+async def reports_hub_risk(callback:CallbackQuery):
+    user=await get_user_tg_id(callback.from_user.id)
+    if user is None or user["role"]!="admin":
+        await callback.answer("Access denied.",show_alert=True)
+        return
+
+    students=await get_students_with_low_attendance()
+
+    if not students:
+        await callback.message.answer("No students currently at risk.")
+        await callback.answer()
+        return
+
+    text="⚠️ Students at Risk\n\n"
+    for student in students:
+        total=student["total_lessons"] or 0
+        attended=student["attended"] or 0
+        percentage=round(attended*100/total,2) if total else 0
+        text+=f"👤 {student['full_name']} — {percentage}%\n"
+
+    await callback.message.answer(text)
+    await callback.answer()
+
+
+# ---- AI Analytics hub ----
+
+@router.message(F.text=="AI Analytics")
+async def ai_analytics_hub_handler(message:types.Message):
+    user=await get_user_tg_id(message.from_user.id)
+    if user is None or user["role"]!="admin":
+        await message.answer("You don't have permission to access this.")
+        return
+
+    keyboard=types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Monthly AI Summary",callback_data="ai_monthly_summary")],
+        [types.InlineKeyboardButton(text="Attendance Risk Analysis",callback_data="ai_risk_analysis")],
+    ])
+
+    await message.answer("Select AI analysis:",reply_markup=keyboard)
+
+
+@router.callback_query(F.data=="ai_monthly_summary")
+async def ai_monthly_summary_handler(callback:CallbackQuery):
+    user=await get_user_tg_id(callback.from_user.id)
+    if user is None or user["role"]!="admin":
+        await callback.answer("Access denied.",show_alert=True)
+        return
+
+    await callback.message.answer("Generating monthly summary...")
+    summary=await generate_monthly_summary()
+    await callback.message.answer(f"🤖 AI Monthly Summary\n\n{summary}")
+    await callback.answer()
+
+
+@router.callback_query(F.data=="ai_risk_analysis")
+async def ai_risk_analysis_handler(callback:CallbackQuery):
+    user=await get_user_tg_id(callback.from_user.id)
+    if user is None or user["role"]!="admin":
+        await callback.answer("Access denied.",show_alert=True)
+        return
+
+    await callback.message.answer("Analyzing attendance risk...")
+    analysis=await analyze_attendance_risk()
+    await callback.message.answer(f"🤖 AI Risk Analysis\n\n{analysis}")
+    await callback.answer()
+
+
+# ---- Attendance / Late / Absence / Early Leave Rules ----
+
+RULE_LABELS={
+    "late_minutes":"Allowed late minutes before a check-in counts as Late",
+    "early_leave_minutes":"Allowed early-leave minutes before it counts as Left Early",
+    "absence_check_minutes":"Minutes after lesson start before a no-show may be checked (not yet applied automatically — the absence scheduler currently marks students absent once the lesson is finished)",
+}
+
+
+def rule_keyboard(key):
+    return types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Change value",callback_data=f"setrule_{key}")]
+    ])
+
+
+@router.message(F.text=="Attendance Rules")
+async def attendance_rules_handler(message:types.Message):
+    user=await get_user_tg_id(message.from_user.id)
+    if user is None or user["role"]!="admin":
+        await message.answer("You don't have permission to access this.")
+        return
+
+    settings=await get_all_settings()
+
+    if not settings:
+        await message.answer("No rules configured yet.")
+        return
+
+    text="⚙️ Attendance Rules\n\n"
+    for row in settings:
+        label=RULE_LABELS.get(row["key"],row["key"])
+        text+=f"{label}: {row['value']} min\n\n"
+
+    await message.answer(text)
+
+
+@router.message(F.text=="Late Rules")
+async def late_rules_handler(message:types.Message):
+    user=await get_user_tg_id(message.from_user.id)
+    if user is None or user["role"]!="admin":
+        await message.answer("You don't have permission to access this.")
+        return
+
+    value=await get_setting("late_minutes")
+    await message.answer(
+        f"Allowed late minutes: {value}\n\n"
+        f"Students who check in within this many minutes of the lesson start are marked Present, otherwise Late.",
+        reply_markup=rule_keyboard("late_minutes")
+    )
+
+
+@router.message(F.text=="Absence Rules")
+async def absence_rules_handler(message:types.Message):
+    user=await get_user_tg_id(message.from_user.id)
+    if user is None or user["role"]!="admin":
+        await message.answer("You don't have permission to access this.")
+        return
+
+    value=await get_setting("absence_check_minutes")
+    await message.answer(
+        f"Absence check window: {value} minutes after lesson start.\n\n"
+        f"Note: the automatic absence scheduler currently marks a student absent once their lesson is finished, "
+        f"not at this exact minute mark yet — this value is stored for future use.",
+        reply_markup=rule_keyboard("absence_check_minutes")
+    )
+
+
+@router.message(F.text=="Early Leave Rules")
+async def early_leave_rules_handler(message:types.Message):
+    user=await get_user_tg_id(message.from_user.id)
+    if user is None or user["role"]!="admin":
+        await message.answer("You don't have permission to access this.")
+        return
+
+    value=await get_setting("early_leave_minutes")
+    await message.answer(
+        f"Allowed early leave: {value} minutes.\n\n"
+        f"Students who check out within this many minutes of the lesson end keep their normal status, "
+        f"otherwise they're marked Left Early.",
+        reply_markup=rule_keyboard("early_leave_minutes")
+    )
+
+
+@router.callback_query(F.data.startswith("setrule_"))
+async def setrule_start_handler(callback:CallbackQuery,state:FSMContext):
+    user=await get_user_tg_id(callback.from_user.id)
+    if user is None or user["role"]!="admin":
+        await callback.answer("Access denied.",show_alert=True)
+        return
+
+    key=callback.data.split("_",1)[1]
+
+    await state.update_data(rule_key=key)
+    await state.set_state(SettingsStates.value)
+
+    await callback.message.answer("Send the new value in minutes (a whole number):")
+    await callback.answer()
+
+
+@router.message(SettingsStates.value)
+async def setrule_value_handler(message:types.Message,state:FSMContext):
+    user=await get_user_tg_id(message.from_user.id)
+    if user is None or user["role"]!="admin":
+        await state.clear()
+        await message.answer("You don't have permission to access this.")
+        return
+
+    if not message.text.isdigit():
+        await message.answer("Please send a whole number.")
+        return
+
+    data=await state.get_data()
+    key=data.get("rule_key")
+
+    await set_setting(key,int(message.text))
+
+    await state.clear()
+
+    label=RULE_LABELS.get(key,key)
+    await message.answer(f"Updated.\n\n{label}: {message.text} min")

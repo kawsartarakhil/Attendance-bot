@@ -6,6 +6,7 @@ from servicce.lesson_service import get_teacher_today_lessons,get_lesson_by_id
 from servicce.attendance_service import get_lesson_attendance
 from servicce.analytics_service import get_group_statistics,get_weekly_group_report
 from servicce.ai_service import analyze_group_attendance
+from servicce.group_service import get_all_groups, get_group_students
 from keyboards.inline import (
     groups_keyboard,
     attendance_lessons_keyboard,
@@ -18,34 +19,6 @@ from database.connection import get_connection
 
 router=Router()
 
-@router.message(F.text=="My Groups")
-async def my_groups_handler(message:types.Message):
-
-    user=await get_user_tg_id(message.from_user.id)
-
-    if user is None:
-        await message.answer("User not found.")
-        return
-
-    teacher=await get_teacher_by_user_id(user["id"])
-
-    if teacher is None:
-        await message.answer("Teacher profile not found.")
-        return
-
-    groups=await get_teacher_groups(teacher["id"])
-
-    if not groups:
-        await message.answer("You don't have any groups.")
-        return
-
-    text="My Groups:\n\n"
-
-    for group in groups:
-        text+=f"📚 {group['name']}\n"
-        text+=f"Course: {group['course_name']}\n\n"
-
-    await message.answer(text)
 
 async def get_teacher_profile(telegram_id):
     user=await get_user_tg_id(telegram_id)
@@ -69,48 +42,7 @@ async def my_groups_handler(message:types.Message):
     if not groups:
         await message.answer("You don't have any groups.")
         return
-    await message.answer("My Groups:",reply_markup=groups_keyboard(groups))
-
-# F.data → data-e button ra megira.
-# regexp → check mekona ke data ba yak pattern match shawa.
-# ^ → az awal shuru shawa.
-# group_ → bayad aynan group_ bashad.
-# \d → raqam ast.
-# + → yak ya chand raqam.
-# $ → dar akhir tamam shawa.
-@router.callback_query(F.data.regexp(r"^group_\d+$"))
-async def teacher_group_handler(callback:CallbackQuery):
-    group_id=int(callback.data.split("_")[1])
-    conn=await get_connection()
-    try:
-        group=await conn.fetchrow("""
-        select g.id,g.name,c.name as course_name from groups g
-        join courses c on g.course_id=c.id
-        where g.id=$1
-        """,group_id)
-        if group is None:
-            await callback.message.answer("Group not found.")
-            await callback.answer()
-            return
-        students_count=await conn.fetchval("""
-        select count(*) from group_students
-        where group_id=$1
-        """,group_id)
-    except Exception as er:
-        print("teacher group error:",er)
-        await callback.message.answer("Something went wrong.")
-        await callback.answer()
-        return
-    finally:
-        await conn.close()
-    await callback.message.answer(
-        "Group: "+group["name"]+
-        "\nCourse: "+group["course_name"]+
-        "\nStudents: "+str(students_count)
-    )
-    await callback.answer()
-
-
+    await message.answer("My Groups:",reply_markup=groups_keyboard(groups, is_admin=False))
 
 @router.message(F.text=="Present Students")
 async def present_students_menu(message:types.Message):
@@ -191,6 +123,13 @@ async def show_filtered_students(callback:CallbackQuery,lesson_id,status,label):
     await callback.message.answer(text)
     await callback.answer()
 
+# F.data → data-e button ra megira.
+# regexp → check mekona ke data ba yak pattern match shawa.
+# ^ → az awal shuru shawa.
+# group_ → bayad aynan group_ bashad.
+# \d → raqam ast.
+# + → yak ya chand raqam.
+# $ → dar akhir tamam shawa.
 
 @router.callback_query(F.data.regexp(r"^present_lesson_\d+$"))
 async def present_lesson_handler(callback:CallbackQuery):
@@ -277,14 +216,28 @@ async def weekly_report_handler(callback:CallbackQuery):
 
 @router.message(F.text=="Group Statistics")
 async def group_statistics_menu(message:types.Message):
-    teacher=await get_teacher_profile(message.from_user.id)
-    if teacher is None:
-        await message.answer("Teacher profile not found.")
+    user=await get_user_tg_id(message.from_user.id)
+
+    if user is None:
+        await message.answer("User not found.")
         return
-    groups=await get_teacher_groups(teacher["id"])
+
+    if user["role"]=="admin":
+        groups=await get_all_groups()
+    elif user["role"]=="teacher":
+        teacher=await get_teacher_profile(message.from_user.id)
+        if teacher is None:
+            await message.answer("Teacher profile not found.")
+            return
+        groups=await get_teacher_groups(teacher["id"])
+    else:
+        await message.answer("You don't have permission to access this.")
+        return
+
     if not groups:
-        await message.answer("You don't have any groups.")
+        await message.answer("There are no groups to show.")
         return
+
     await message.answer(
         "Select a group:",
         reply_markup=teacher_groups_keyboard(groups,"gstat")
@@ -317,8 +270,6 @@ async def group_statistics_handler(callback:CallbackQuery):
     await callback.answer()
 
 
-# ---- AI Group Analysis ----
-
 @router.message(F.text=="AI Group Analysis")
 async def ai_group_analysis_menu(message:types.Message):
     teacher=await get_teacher_profile(message.from_user.id)
@@ -336,12 +287,49 @@ async def ai_group_analysis_menu(message:types.Message):
 
 
 @router.callback_query(F.data.regexp(r"^aigroup_\d+$"))
-async def ai_group_analysis_handler(callback:CallbackQuery):
-    group_id=int(callback.data.split("_")[1])
-
-    await callback.message.answer("Analyzing group attendance...")
-
-    analysis=await analyze_group_attendance(group_id)
-
+async def ai_group_analysis_handler(callback: CallbackQuery):
+    await callback.answer("🤖 Analyzing...")
+    group_id = int(callback.data.split("_")[1])
+    await callback.message.answer("🤖 Analyzing group attendance...")
+    analysis = await analyze_group_attendance(group_id)
     await callback.message.answer(f"🤖 AI Group Analysis\n\n{analysis}")
+
+@router.callback_query(F.data.regexp(r"^teacher_group_\d+$"))
+async def teacher_group_handler(callback: CallbackQuery):
+    group_id = int(callback.data.split("_")[2])
+
+    teacher = await get_teacher_profile(callback.from_user.id)
+
+    if teacher is None:
+        await callback.answer(
+            "Teacher profile not found.",
+            show_alert=True
+        )
+        return
+
+    groups = await get_teacher_groups(teacher["id"])
+
+    group = None
+
+    for item in groups:
+        if item["id"] == group_id:
+            group = item
+            break
+
+    if group is None:
+        await callback.answer(
+            "You don't have permission to access this group.",
+            show_alert=True
+        )
+        return
+
+    students = await get_group_students(group_id)
+
+    await callback.message.answer(
+        f"👥 Group Details\n\n"
+        f"Group: {group['name']}\n"
+        f"Course: {group['course_name']}\n"
+        f"Students: {len(students)}"
+    )
+
     await callback.answer()
