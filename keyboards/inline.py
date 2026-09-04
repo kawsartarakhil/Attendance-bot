@@ -30,20 +30,59 @@ def groups_keyboard(groups, is_admin=False):
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def students_keyboard(students):
-    keyboard=[]
+    keyboard = []
+
     for student in students:
         keyboard.append([
-            InlineKeyboardButton( text=student["full_name"], callback_data=f"student_{student['id']}")
+            InlineKeyboardButton(
+                text=student["full_name"],
+                callback_data=f"student_{student['id']}"
+            )
         ])
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
+        keyboard.append([
+            InlineKeyboardButton(
+                text="✏️ Edit",
+                callback_data=f"edit_student_{student['id']}"
+            ),
+            InlineKeyboardButton(
+                text="🗑 Delete",
+                callback_data=f"delete_student_{student['id']}"
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            text="➕ Create Student",
+            callback_data="create_student"
+        )
+    ])
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=keyboard
+    )
 
 def teachers_keyboard(teachers):
-    keyboard=[]
+    keyboard = []
+
     for teacher in teachers:
-        keyboard.append([  InlineKeyboardButton(  text=teacher["full_name"],  callback_data=f"teacher_{teacher['id']}" )
+        keyboard.append([
+            InlineKeyboardButton(
+                text=teacher["full_name"],
+                callback_data=f"teacher_{teacher['id']}"
+            )
         ])
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    keyboard.append([
+        InlineKeyboardButton(
+            text="➕ Create Teacher",
+            callback_data="create_teacher"
+        )
+    ])
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=keyboard
+    )
 
 
 def courses_keyboard(courses):
@@ -390,4 +429,19 @@ def attendance_lessons_keyboard(lessons):
                 callback_data=f"manual_lesson_{lesson['id']}"
             )
         ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+
+def lesson_groups_keyboard(groups):
+    keyboard = []
+
+    for group in groups:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=group["name"],
+                callback_data=f"create_lesson_group_{group['id']}"
+            )
+        ])
+
     return InlineKeyboardMarkup(inline_keyboard=keyboard)

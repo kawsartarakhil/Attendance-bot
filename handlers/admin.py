@@ -4,14 +4,34 @@ from aiogram import Router,types,F
 from aiogram.fsm.context import FSMContext
 from servicce.analytics_service import get_monthly_report,get_weekly_report,get_teacher_statistics
 from servicce.user_services import get_user_tg_id
-from servicce.student_service import get_all_students,get_student_by_id,get_student_group
-from servicce.teacher_services import get_all_teachers,get_teacher_by_id,get_teacher_groups
+from servicce.student_service import delete_student, get_all_students,get_student_by_id,get_student_group,create_student_user, update_student_user
+from servicce.teacher_services import create_teacher_user, get_all_teachers,get_teacher_by_id,get_teacher_groups
 from servicce.course_service import get_all_courses,get_course_by_id,create_course,update_course,delete_course
 from servicce.room_service import get_all_rooms,get_room_by_id,create_room,update_room,delete_room
 from servicce.schedule_service import get_all_schedules,get_schedule_by_id,create_schedule,delete_schedule,update_schedule
-from keyboards.inline import rooms_keyboard,room_actions_keyboard, schedule_groups_keyboard, schedule_rooms_keyboard,students_keyboard,teachers_keyboard,courses_keyboard,course_actions_keyboard,groups_keyboard,group_courses_keyboard,group_teachers_keyboard,group_actions_keyboard,edit_group_courses_keyboard,edit_group_teachers_keyboard,schedules_keyboard,schedule_actions_keyboard,lessons_keyboard,lesson_actions_keyboard
+from keyboards.inline import lesson_groups_keyboard, rooms_keyboard,room_actions_keyboard, schedule_groups_keyboard, schedule_rooms_keyboard,students_keyboard,courses_keyboard,course_actions_keyboard,groups_keyboard,group_courses_keyboard,group_teachers_keyboard,group_actions_keyboard,edit_group_courses_keyboard,edit_group_teachers_keyboard,schedules_keyboard,schedule_actions_keyboard,lessons_keyboard,lesson_actions_keyboard, teachers_keyboard
 from servicce.lesson_service import create_lesson,get_lesson_by_id,get_today_lessons,update_lesson_status,cancel_lesson
-from states import AddCourseStates, CreateCourseStates, CreateLessonStates,EditCourseStates,DeleteCourseStates,CreateGroupStates,EditGroupStates,DeleteGroupStates,CreateRoomStates,EditRoomStates,DeleteRoomStates,CreateScheduleStates,EditScheduleStates,DeleteScheduleStates
+from servicce.teacher_services import get_all_teachers, create_teacher_user
+from states import (
+    AddCourseStates,
+    CreateCourseStates,
+    CreateLessonStates,
+    CreateTeacherStates,
+    DeleteStudentStates,
+    EditCourseStates,
+    DeleteCourseStates,
+    CreateGroupStates,
+    EditGroupStates,
+    DeleteGroupStates,
+    CreateRoomStates,
+    EditRoomStates,
+    DeleteRoomStates,
+    CreateScheduleStates,
+    EditScheduleStates,
+    DeleteScheduleStates,
+    CreateStudentStates,
+    EditStudentStates
+)
 from servicce.group_service import get_all_groups,get_group_by_id,create_group,update_group,delete_group,get_group_students
 from servicce.analytics_service import get_group_statistics
 from servicce.attendance_service import get_students_with_low_attendance
@@ -23,13 +43,17 @@ from aiogram.types import CallbackQuery
 router=Router()
 
 
-@router.callback_query(F.data.startswith("group_"), CreateLessonStates.group)
-async def lesson_group_handler(callback: types.CallbackQuery,state: FSMContext):
-    group_id=int(callback.data.split("_")[1])
+@router.callback_query(
+    F.data.regexp(r"^create_lesson_group_\d+$"),
+    CreateLessonStates.group
+)
+async def lesson_group_handler(callback: types.CallbackQuery, state: FSMContext):
+
+    group_id = int(callback.data.split("_")[3])
 
     await state.update_data(group=group_id)
 
-    teachers=await get_all_teachers()
+    teachers = await get_all_teachers()
 
     if not teachers:
         await callback.answer("No teachers found")
@@ -83,79 +107,22 @@ async def lesson_room_handler(callback: types.CallbackQuery,state: FSMContext):
 @router.message(F.text=="Students")
 async def admin_students_handler(message: types.Message):
     user=await get_user_tg_id(message.from_user.id)
+
     if user is None:
         await message.answer("User not found.")
         return
+
     if user["role"]!="admin":
         await message.answer("You don't have permission to access this.")
         return
+
     students=await get_all_students()
-    if not students:
-        await message.answer("There are no students.")
-        return
-    await message.answer("Students:", reply_markup=students_keyboard(students))
 
-@router.callback_query(F.data.startswith("student_"))
-async def admin_student_handler(callback: types.CallbackQuery):
-    student_id=int(callback.data.split("_")[1])
-    student=await get_student_by_id(student_id)
-    if student is None:
-        await callback.message.answer("Student not found.")
-        await callback.answer()
-        return
-    group=await get_student_group(student_id)
-    if group is None:
-        group_name="Not assigned"
-        course_name="Not assigned"
-    else:
-        group_name=group["name"]
-        course_name=group["course_name"]
-    user=await get_user_tg_id(callback.from_user.id)
-    if user is None or user["role"]!="admin":
-        await callback.message.answer("You don't have permission to access this.")
-        await callback.answer()
-        return
-    await callback.message.answer("Student Details\n\nStudent ID: "+str(student["id"])+"\nGroup: "+group_name+"\nCourse: "+course_name)
-    await callback.answer()
+    await message.answer(
+        "Students:",
+        reply_markup=students_keyboard(students)
+    )
 
-
-@router.message(F.text=="Teachers")
-async def admin_teachers_handler(message: types.Message):
-    user=await get_user_tg_id(message.from_user.id)
-    if user is None:
-        await message.answer("User not found.")
-        return
-    if user["role"]!="admin":
-        await message.answer("You don't have permission to access this.")
-        return
-    teachers=await get_all_teachers()
-    if not teachers:
-        await message.answer("There are no teachers.")
-        return
-    await message.answer("Teachers:",reply_markup=teachers_keyboard(teachers))
-
-@router.callback_query(F.data.regexp(r"^teacher_\d+$"))
-async def admin_teacher_handler(callback: CallbackQuery):
-    teacher_id = int(callback.data.split("_")[1])
-    user=await get_user_tg_id(callback.from_user.id)
-    if user is None or user["role"]!="admin":
-        await callback.message.answer("You don't have permission to access this.")
-        await callback.answer()
-        return
-    teacher=await get_teacher_by_id(teacher_id)
-    if teacher is None:
-        await callback.message.answer("Teacher not found.")
-        await callback.answer()
-        return
-    groups=await get_teacher_groups(teacher_id)
-    if groups:
-        group_text=""
-        for group in groups:
-            group_text+=group["name"]+"\n"
-    else:
-        group_text="No groups assigned"
-    await callback.message.answer("Teacher Details\n\nTeacher ID: "+str(teacher["id"])+"\nGroups:\n"+group_text)
-    await callback.answer()
 
 
 @router.message(F.text=="Courses")
@@ -1193,7 +1160,7 @@ async def admin_lessons_handler(message: types.Message, state: FSMContext):
 
     await message.answer("Today's lessons:",reply_markup=keyboard)
 
-    
+
 @router.callback_query(F.data.startswith("lesson_"))
 async def admin_lesson_handler(callback: types.CallbackQuery):
     user=await get_user_tg_id(callback.from_user.id)
@@ -1279,15 +1246,15 @@ async def admin_complete_lesson_handler(callback: types.CallbackQuery):
     await callback.answer()
     
 @router.callback_query(F.data == "create_lesson")
-async def create_lesson_handler(callback: types.CallbackQuery,state: FSMContext):
+async def create_lesson_handler(callback: types.CallbackQuery, state: FSMContext):
 
-    user=await get_user_tg_id(callback.from_user.id)
+    user = await get_user_tg_id(callback.from_user.id)
 
-    if user is None or user["role"]!="admin":
+    if user is None or user["role"] != "admin":
         await callback.answer("Access denied")
         return
 
-    groups=await get_all_groups()
+    groups = await get_all_groups()
 
     if not groups:
         await callback.answer("No groups found")
@@ -1295,7 +1262,10 @@ async def create_lesson_handler(callback: types.CallbackQuery,state: FSMContext)
 
     await state.set_state(CreateLessonStates.group)
 
-    await callback.message.answer("Select group:",reply_markup=groups_keyboard(groups))
+    await callback.message.answer(
+        "Select group:",
+        reply_markup=lesson_groups_keyboard(groups)
+    )
 
     await callback.answer()
 
@@ -1336,27 +1306,45 @@ async def lesson_start_time_handler(message:types.Message,state:FSMContext):
     await message.answer("Enter end time (HH:MM):")
 
 @router.message(CreateLessonStates.end_time)
-async def lesson_end_time_handler(message:types.Message,state:FSMContext):
+async def lesson_end_time_handler(
+    message: types.Message,
+    state: FSMContext
+):
     try:
-        end_time=time.fromisoformat(message.text)
+        end_time = time.fromisoformat(message.text)
     except ValueError:
-        await message.answer("Please enter the time like 10:30.")
+        await message.answer("Please enter the time like 12:30.")
         return
+
+    data = await state.get_data()
+
+    start_time = data["start_time"]
+
+    if end_time <= start_time:
+        await message.answer(
+            "End time must be later than start time.\n\n"
+            f"Start time: {start_time.strftime('%H:%M')}\n"
+            "Please enter another end time:"
+        )
+        return
+
     await state.update_data(end_time=end_time)
+
     await state.set_state(CreateLessonStates.confirm)
-    data=await state.get_data()
+
+    data = await state.get_data()
+
     await message.answer(
-        "Create this lesson?\n\n"+
-        "Group ID: "+str(data["group"])+"\n"+
-        "Teacher ID: "+str(data["teacher"])+"\n"+
-        "Room ID: "+str(data["room"])+"\n"+
-        "Subject: "+data["subject"]+"\n"+
-        "Date: "+str(data["lesson_date"])+"\n"+
-        "Time: "+str(data["start_time"])+" - "+str(data["end_time"])+"\n\n"+
+        "Create this lesson?\n\n"
+        f"Group ID: {data['group']}\n"
+        f"Teacher ID: {data['teacher']}\n"
+        f"Room ID: {data['room']}\n"
+        f"Subject: {data['subject']}\n"
+        f"Date: {data['lesson_date']}\n"
+        f"Time: {data['start_time'].strftime('%H:%M')} - "
+        f"{data['end_time'].strftime('%H:%M')}\n\n"
         "Send Yes to confirm or No to cancel."
     )
-
-
 @router.message(CreateLessonStates.confirm)
 async def create_lesson_confirm_handler(message: types.Message,state: FSMContext):
 
@@ -1472,7 +1460,6 @@ async def teacher_statistics_handler(message:types.Message):
     await message.answer(text)
 
 
-# ---- Reports hub ----
 
 @router.message(F.text=="Reports")
 async def reports_hub_handler(message:types.Message):
@@ -1607,7 +1594,6 @@ async def reports_hub_risk(callback:CallbackQuery):
     await callback.answer()
 
 
-# ---- AI Analytics hub ----
 
 @router.message(F.text=="AI Analytics")
 async def ai_analytics_hub_handler(message:types.Message):
@@ -1650,7 +1636,6 @@ async def ai_risk_analysis_handler(callback:CallbackQuery):
     await callback.answer()
 
 
-# ---- Attendance / Late / Absence / Early Leave Rules ----
 
 RULE_LABELS={
     "late_minutes":"Allowed late minutes before a check-in counts as Late",
@@ -1770,3 +1755,483 @@ async def setrule_value_handler(message:types.Message,state:FSMContext):
 
     label=RULE_LABELS.get(key,key)
     await message.answer(f"Updated.\n\n{label}: {message.text} min")
+
+
+@router.callback_query(F.data == "create_student")
+async def create_student_handler(
+    callback: CallbackQuery,
+    state: FSMContext
+):
+    await callback.answer()
+
+    user = await get_user_tg_id(callback.from_user.id)
+
+    if user is None or user["role"] != "admin":
+        await callback.message.answer(
+            "You don't have permission."
+        )
+        return
+
+    await state.set_state(CreateStudentStates.full_name)
+
+    await callback.message.answer(
+        "Enter student's full name:"
+    )
+
+
+
+@router.message(CreateStudentStates.full_name)
+async def student_full_name_handler(
+    message: types.Message,
+    state: FSMContext
+):
+    await state.update_data(full_name=message.text)
+
+    await state.set_state(CreateStudentStates.telegram_id)
+
+    await message.answer(
+        "Enter student's Telegram ID:"
+    )
+
+
+@router.message(CreateStudentStates.telegram_id)
+async def student_telegram_id_handler(
+    message: types.Message,
+    state: FSMContext
+):
+    if not message.text.isdigit():
+        await message.answer("Telegram ID must be a number.")
+        return
+
+    await state.update_data(
+        telegram_id=int(message.text)
+    )
+
+    await state.set_state(CreateStudentStates.confirm)
+
+    data = await state.get_data()
+
+    await message.answer(
+        "Create this student?\n\n"
+        f"Full name: {data['full_name']}\n"
+        f"Telegram ID: {data['telegram_id']}\n\n"
+        "Send Yes to confirm or No to cancel."
+    )
+
+@router.message(CreateStudentStates.confirm)
+async def create_student_confirm_handler(
+    message: types.Message,
+    state: FSMContext
+):
+    user = await get_user_tg_id(message.from_user.id)
+
+    if user is None or user["role"] != "admin":
+        await state.clear()
+        await message.answer(
+            "You don't have permission to access this."
+        )
+        return
+
+    if message.text == "No":
+        await state.clear()
+        await message.answer(
+            "Student creation cancelled."
+        )
+        return
+
+    if message.text != "Yes":
+        await message.answer(
+            "Please send Yes or No."
+        )
+        return
+
+    data = await state.get_data()
+
+    student = await create_student_user(
+        data["telegram_id"],
+        data["full_name"]
+    )
+
+    if student is None:
+        await state.clear()
+        await message.answer(
+            "Student already exists or could not be created."
+        )
+        return
+
+    await state.clear()
+
+    await message.answer(
+        "Student created successfully."
+    )
+
+
+
+
+@router.callback_query(F.data == "create_teacher")
+async def create_teacher_handler(
+    callback: CallbackQuery,
+    state: FSMContext
+):
+    await callback.answer()
+
+    user = await get_user_tg_id(callback.from_user.id)
+
+    if user is None or user["role"] != "admin":
+        await callback.message.answer(
+            "You don't have permission."
+        )
+        return
+
+    await state.set_state(CreateTeacherStates.full_name)
+
+    await callback.message.answer(
+        "Enter teacher's full name:"
+    )
+
+
+@router.message(CreateTeacherStates.full_name)
+async def teacher_full_name_handler(
+    message: types.Message,
+    state: FSMContext
+):
+    await state.update_data(
+        full_name=message.text
+    )
+
+    await state.set_state(
+        CreateTeacherStates.telegram_id
+    )
+
+    await message.answer(
+        "Enter teacher's Telegram ID:"
+    )
+
+
+
+@router.callback_query(F.data.regexp(r"^edit_student_\d+$"))
+async def edit_student_handler(
+    callback: CallbackQuery,
+    state: FSMContext
+):
+    user = await get_user_tg_id(callback.from_user.id)
+
+    if user is None or user["role"] != "admin":
+        await callback.answer(
+            "You don't have permission.",
+            show_alert=True
+        )
+        return
+
+    student_id = int(callback.data.split("_")[2])
+
+    student = await get_student_by_id(student_id)
+
+    if student is None:
+        await callback.answer(
+            "Student not found.",
+            show_alert=True
+        )
+        return
+
+    await state.update_data(
+        student_id=student_id
+    )
+
+    await state.set_state(
+        EditStudentStates.full_name
+    )
+
+    await callback.message.answer(
+        "Enter new student's full name:"
+    )
+
+    await callback.answer()
+
+
+@router.message(EditStudentStates.full_name)
+async def edit_student_full_name_handler(
+    message: types.Message,
+    state: FSMContext
+):
+    await state.update_data(
+        full_name=message.text
+    )
+
+    await state.set_state(
+        EditStudentStates.telegram_id
+    )
+
+    await message.answer(
+        "Enter new student's Telegram ID:"
+    )
+
+
+@router.message(EditStudentStates.telegram_id)
+async def edit_student_telegram_id_handler(
+    message: types.Message,
+    state: FSMContext
+):
+    if not message.text.isdigit():
+        await message.answer(
+            "Telegram ID must be a number."
+        )
+        return
+
+    await state.update_data(
+        telegram_id=int(message.text)
+    )
+
+    await state.set_state(
+        EditStudentStates.confirm
+    )
+
+    data = await state.get_data()
+
+    await message.answer(
+        "Update this student?\n\n"
+        f"Full name: {data['full_name']}\n"
+        f"Telegram ID: {data['telegram_id']}\n\n"
+        "Send Yes to confirm or No to cancel."
+    )
+
+
+@router.message(EditStudentStates.confirm)
+async def edit_student_confirm_handler(
+    message: types.Message,
+    state: FSMContext
+):
+    user = await get_user_tg_id(message.from_user.id)
+
+    if user is None or user["role"] != "admin":
+        await state.clear()
+        await message.answer(
+            "You don't have permission to access this."
+        )
+        return
+
+    if message.text == "No":
+        await state.clear()
+        await message.answer(
+            "Student update cancelled."
+        )
+        return
+
+    if message.text != "Yes":
+        await message.answer(
+            "Please send Yes or No."
+        )
+        return
+
+    data = await state.get_data()
+
+    result = await update_student_user(
+        data["student_id"],
+        data["full_name"],
+        data["telegram_id"]
+    )
+
+    await state.clear()
+
+    if not result:
+        await message.answer(
+            "Student could not be updated."
+        )
+        return
+
+    await message.answer(
+        "Student updated successfully."
+    )
+
+
+@router.callback_query(F.data.regexp(r"^delete_student_\d+$"))
+async def delete_student_handler(
+    callback: CallbackQuery,
+    state: FSMContext
+):
+    user = await get_user_tg_id(callback.from_user.id)
+
+    if user is None or user["role"] != "admin":
+        await callback.answer(
+            "You don't have permission.",
+            show_alert=True
+        )
+        return
+
+    student_id = int(callback.data.split("_")[2])
+
+    student = await get_student_by_id(student_id)
+
+    if student is None:
+        await callback.answer(
+            "Student not found.",
+            show_alert=True
+        )
+        return
+
+    await state.update_data(
+        student_id=student_id
+    )
+
+    await state.set_state(
+        DeleteStudentStates.confirm
+    )
+
+    await callback.message.answer(
+        "⚠️ Delete this student?\n\n"
+        f"Student ID: {student['id']}\n\n"
+        "This will also remove the student's "
+        "group membership and attendance records.\n\n"
+        "Send Yes to confirm or No to cancel."
+    )
+
+    await callback.answer()
+
+
+@router.message(DeleteStudentStates.confirm)
+async def delete_student_confirm_handler(
+    message: types.Message,
+    state: FSMContext
+):
+    user = await get_user_tg_id(message.from_user.id)
+
+    if user is None or user["role"] != "admin":
+        await state.clear()
+        await message.answer(
+            "You don't have permission to access this."
+        )
+        return
+
+    if message.text == "No":
+        await state.clear()
+        await message.answer(
+            "Student deletion cancelled."
+        )
+        return
+
+    if message.text != "Yes":
+        await message.answer(
+            "Please send Yes or No."
+        )
+        return
+
+    data = await state.get_data()
+
+    result = await delete_student(
+        data["student_id"]
+    )
+
+    await state.clear()
+
+    if not result:
+        await message.answer(
+            "Student could not be deleted."
+        )
+        return
+
+    await message.answer(
+        "Student deleted successfully."
+    )
+
+
+@router.message(F.text == "Teachers")
+async def admin_teachers_handler(message: types.Message):
+    user = await get_user_tg_id(message.from_user.id)
+
+    if user is None:
+        await message.answer("User not found.")
+        return
+
+    if user["role"] != "admin":
+        await message.answer("You don't have permission to access this.")
+        return
+
+    teachers = await get_all_teachers()
+
+    await message.answer(
+        "Teachers:",
+        reply_markup=teachers_keyboard(teachers)
+    )
+
+
+
+@router.message(CreateTeacherStates.telegram_id)
+async def teacher_telegram_id_handler(
+    message: types.Message,
+    state: FSMContext
+):
+    if not message.text.isdigit():
+        await message.answer(
+            "Telegram ID must be a number."
+        )
+        return
+
+    await state.update_data(
+        telegram_id=int(message.text)
+    )
+
+    await state.set_state(
+        CreateTeacherStates.confirm
+    )
+
+    data = await state.get_data()
+
+    await message.answer(
+        "Create this teacher?\n\n"
+        f"Full name: {data['full_name']}\n"
+        f"Telegram ID: {data['telegram_id']}\n\n"
+        "Send Yes to confirm or No to cancel."
+    )
+
+
+@router.message(CreateTeacherStates.confirm)
+async def create_teacher_confirm_handler(
+    message: types.Message,
+    state: FSMContext
+):
+    user = await get_user_tg_id(
+        message.from_user.id
+    )
+
+    if user is None or user["role"] != "admin":
+        await state.clear()
+
+        await message.answer(
+            "You don't have permission to access this."
+        )
+        return
+
+    if message.text == "No":
+        await state.clear()
+
+        await message.answer(
+            "Teacher creation cancelled."
+        )
+        return
+
+    if message.text != "Yes":
+        await message.answer(
+            "Please send Yes or No."
+        )
+        return
+
+    data = await state.get_data()
+
+    teacher = await create_teacher_user(
+        data["telegram_id"],
+        data["full_name"]
+    )
+
+    if teacher is None:
+        await state.clear()
+
+        await message.answer(
+            "Teacher already exists or could not be created."
+        )
+        return
+
+    await state.clear()
+
+    await message.answer(
+        "Teacher created successfully."
+    )

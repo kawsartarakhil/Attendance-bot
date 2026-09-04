@@ -101,3 +101,37 @@ class AddCourseStates(StatesGroup):
 
 class SettingsStates(StatesGroup):
     value=State()
+
+
+class CreateStudentStates(StatesGroup):
+    full_name = State()
+    telegram_id = State()
+    confirm = State()
+
+
+
+class CreateTeacherStates(StatesGroup):
+    full_name = State()
+    telegram_id = State()
+    confirm = State()
+
+
+
+class EditStudentStates(StatesGroup):
+    full_name = State()
+    telegram_id = State()
+    confirm = State()
+
+
+class DeleteStudentStates(StatesGroup):
+    confirm = State()
+
+
+class EditTeacherStates(StatesGroup):
+    full_name = State()
+    telegram_id = State()
+    confirm = State()
+
+
+class DeleteTeacherStates(StatesGroup):
+    confirm = State()

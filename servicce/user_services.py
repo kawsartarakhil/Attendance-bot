@@ -1,33 +1,31 @@
 from database.connection import get_connection
 
-async def register(tg_id,full_name):
-    conn=await get_connection()
+async def register(tg_id, full_name):
+    conn = await get_connection()
     try:
-        user=await conn.fetchrow("""
+        user = await conn.fetchrow("""
         select * from users
         where telegram_id=$1
-        """,tg_id)
+        """, tg_id)
 
         if user:
             return user
 
         await conn.execute("""
-        insert into users(telegram_id,full_name,role)
-        values($1,$2,'student')
-        """,tg_id,full_name)
+        insert into users(telegram_id, full_name, role)
+        values($1, $2, 'student')
+        """, tg_id, full_name)
 
-        user=await conn.fetchrow("""
+        user = await conn.fetchrow("""
         select * from users
         where telegram_id=$1
-        """,tg_id)
+        """, tg_id)
 
-        await conn.execute("""
-        insert into students(user_id)
-        values($1)
-        """,user["id"])
         return user
+
     except Exception as er:
-        print("Registration error:",er)
+        print("Registration error:", er)
+
     finally:
         await conn.close()
 

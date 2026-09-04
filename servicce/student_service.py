@@ -109,3 +109,112 @@ async def get_group_student_users(group_id):
         print("get group student users error:",er)
     finally:
         await conn.close()
+
+
+async def create_student_user(tg_id, full_name):
+    conn = await get_connection()
+
+    try:
+        user = await conn.fetchrow("""
+        select * from users
+        where telegram_id=$1
+        """, tg_id)
+
+        if user:
+            student = await conn.fetchrow("""
+            select * from students
+            where user_id=$1
+            """, user["id"])
+
+            if student:
+                return None
+
+            await conn.execute("""
+            update users
+            set role='student', full_name=$1
+            where id=$2
+            """, full_name, user["id"])
+
+            await conn.execute("""
+            insert into students(user_id)
+            values($1)
+            """, user["id"])
+
+            return user
+
+        user = await conn.fetchrow("""
+        insert into users(telegram_id, full_name, role)
+        values($1, $2, 'student')
+        returning *
+        """, tg_id, full_name)
+
+        await conn.execute("""
+        insert into students(user_id)
+        values($1)
+        """, user["id"])
+
+        return user
+
+    except Exception as er:
+        print("create student user error:", er)
+        return None
+
+    finally:
+        await conn.close()
+
+
+async def update_student_user(student_id, full_name, telegram_id):
+    conn = await get_connection()
+
+    try:
+        student = await conn.fetchrow("""
+        select s.id, s.user_id
+        from students s
+        where s.id=$1
+        """, student_id)
+
+        if student is None:
+            return False
+
+        await conn.execute("""
+        update users
+        set full_name=$1, telegram_id=$2
+        where id=$3
+        """, full_name, telegram_id, student["user_id"])
+
+        return True
+
+    except Exception as er:
+        print("update student user error:", er)
+        return False
+
+    finally:
+        await conn.close()
+
+
+async def delete_student(student_id):
+    conn = await get_connection()
+
+    try:
+        student = await conn.fetchrow("""
+        select user_id
+        from students
+        where id=$1
+        """, student_id)
+
+        if student is None:
+            return False
+
+        await conn.execute("""
+        delete from users
+        where id=$1
+        """, student["user_id"])
+
+        return True
+
+    except Exception as er:
+        print("delete student error:", er)
+        return False
+
+    finally:
+        await conn.close()
